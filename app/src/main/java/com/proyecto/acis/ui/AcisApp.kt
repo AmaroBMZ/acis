@@ -94,6 +94,7 @@ import java.util.Locale
 import java.util.UUID
 import kotlinx.coroutines.launch
 
+// Rutas de navegación dentro de la app ACIS
 private object RutasAcis {
     const val ORDENES = "ordenes"
     const val CREAR = "crear"
@@ -102,6 +103,11 @@ private object RutasAcis {
     fun detalle(ordenId: String) = "detalle/$ordenId"
 }
 
+/**
+ * Contenedor principal de la interfaz ACIS.
+ * Configura el Scaffold, la barra superior (TopAppBar), el botón flotante (FAB)
+ * y el selector de perfiles (FilterChips).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
@@ -111,9 +117,11 @@ fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val rutaActual = navBackStackEntry?.destination?.route
 
+    // Estructura principal con barra superior y botón de acción flotante (M3)
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
+            // Barra superior institucional de la aplicación
             TopAppBar(
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primary,
@@ -128,6 +136,7 @@ fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
             )
         },
         floatingActionButton = {
+            // Botón flotante (+) para crear nueva OT (visible para Planificador en la lista)
             if (rutaActual == RutasAcis.ORDENES && perfil == Perfil.PLANIFICADOR) {
                 FloatingActionButton(
                     containerColor = MaterialTheme.colorScheme.primary,
@@ -144,12 +153,14 @@ fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
             }
         },
     ) { paddingValues ->
+        // Contenedor Box respetando los márgenes del Scaffold
         Box(
             modifier = Modifier
                 .padding(paddingValues)
                 .fillMaxSize(),
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
+                // Franja de selección rápida de perfil de usuario (Planificador / Técnico / Cliente)
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     color = MaterialTheme.colorScheme.primaryContainer,
@@ -180,6 +191,8 @@ fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
                     }
                 }
                 HorizontalDivider()
+
+                // Navegador entre la lista de OTs, creación de nueva OT y vista de detalle
                 NavHost(
                     navController = navController,
                     startDestination = RutasAcis.ORDENES,
@@ -209,6 +222,7 @@ fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
                         )
                     },
                 ) {
+                    // Pantalla de lista de órdenes
                     composable(RutasAcis.ORDENES) {
                         Crossfade(targetState = perfil, animationSpec = tween(420), label = "cambio de perfil") { perfilVisible ->
                             ListaOrdenes(
@@ -218,6 +232,7 @@ fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
                             )
                         }
                     }
+                    // Pantalla de formulario para crear OT
                     composable(RutasAcis.CREAR) {
                         CrearOrden(
                             viewModel = viewModel,
@@ -233,6 +248,7 @@ fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
                             },
                         )
                     }
+                    // Pantalla de detalle e intervención de la OT
                     composable(
                         route = RutasAcis.DETALLE,
                         arguments = listOf(navArgument("ordenId") { type = NavType.StringType }),
@@ -254,6 +270,10 @@ fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * Muestra la lista de Órdenes de Trabajo en tarjetas Material 3.
+ * Filtra las órdenes automáticamente según el perfil activo.
+ */
 @Composable
 private fun ListaOrdenes(
     ordenes: List<OrdenTrabajo>,
@@ -294,6 +314,7 @@ private fun ListaOrdenes(
                 )
             }
         }
+        // Tarjetas individuales de cada OT
         items(ordenes, key = { it.id }) { orden ->
             Card(
                 modifier = Modifier.fillMaxWidth().clickable { onSeleccionar(orden.id) },
@@ -319,6 +340,10 @@ private fun ListaOrdenes(
     }
 }
 
+/**
+ * Formulario para ingresar una nueva Orden de Trabajo.
+ * Contiene campos de texto con validación y selectores de fecha/hora.
+ */
 @Composable
 private fun CrearOrden(
     viewModel: OrdenesViewModel,
@@ -337,8 +362,11 @@ private fun CrearOrden(
     var hora by rememberSaveable { mutableStateOf(ahora.get(Calendar.HOUR_OF_DAY)) }
     var minuto by rememberSaveable { mutableStateOf(ahora.get(Calendar.MINUTE)) }
 
-    LazyColumn(modifier = Modifier.fillMaxSize().imePadding(), contentPadding = PaddingValues(20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().imePadding(),
+        contentPadding = PaddingValues(20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
         item { TextButton(onClick = onVolver) { Text("← Volver") } }
         item { Text("Nueva orden de trabajo", style = MaterialTheme.typography.headlineSmall) }
         item { CampoFormulario(datos.local, viewModel::cambiarLocal, "Local", errores.local) }
@@ -347,8 +375,10 @@ private fun CrearOrden(
             "Descripción del trabajo", errores.descripcion, minLines = 3) }
         item { Text("Tipo de trabajo", style = MaterialTheme.typography.titleMedium) }
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.horizontalScroll(rememberScrollState())) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+            ) {
                 TipoOt.entries.filter { it != TipoOt.SIN_ESPECIFICAR }.forEach { tipo ->
                     FilterChip(selected = datos.tipo == tipo,
                         onClick = { viewModel.cambiarTipo(tipo) }, label = { Text(tipo.etiqueta) })
@@ -358,8 +388,10 @@ private fun CrearOrden(
         if (errores.tipo != null) item { ErrorSeleccion(errores.tipo) }
         item { Text("Prioridad", style = MaterialTheme.typography.titleMedium) }
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.horizontalScroll(rememberScrollState())) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+            ) {
                 PrioridadOt.entries.filter { it != PrioridadOt.SIN_ESPECIFICAR }.forEach { prioridad ->
                     FilterChip(selected = datos.prioridad == prioridad,
                         onClick = { viewModel.cambiarPrioridad(prioridad) }, label = { Text(prioridad.etiqueta) })
@@ -416,6 +448,11 @@ private fun CrearOrden(
     }
 }
 
+/**
+ * Pantalla de detalle e intervención técnica de una Orden de Trabajo.
+ * Permite realizar check-in con ubicación, capturar foto de evidencia,
+ * completar el informe, revisar observaciones y dar conformidad.
+ */
 @Composable
 private fun DetalleOrden(
     orden: OrdenTrabajo,
@@ -459,8 +496,11 @@ private fun DetalleOrden(
     val errorRespuesta = viewModel.errorRespuesta(orden.id, formulario.respuesta)
     val mensaje = viewModel.mensaje(orden.id)
 
-    LazyColumn(modifier = Modifier.fillMaxSize().imePadding(), contentPadding = PaddingValues(20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().imePadding(),
+        contentPadding = PaddingValues(20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
         item { TextButton(onClick = onVolver) { Text("← Volver a órdenes") } }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -510,12 +550,15 @@ private fun DetalleOrden(
                 }
             }
         }
+        // Asignación por el Planificador
         if (perfil == Perfil.PLANIFICADOR && orden.estado == EstadoOt.CREADA) {
             item { Button(onClick = { viewModel.asignar(orden.id) }) { Text("Asignar a técnico demo") } }
         }
+        // Aceptación por el Técnico
         if (perfil == Perfil.TECNICO && orden.estado == EstadoOt.ASIGNADA) {
             item { Button(onClick = { viewModel.aceptar(orden.id) }) { Text("Aceptar OT") } }
         }
+        // Check-in con ubicación por el Técnico
         if (perfil == Perfil.TECNICO && orden.estado == EstadoOt.ACEPTADA) {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -531,6 +574,7 @@ private fun DetalleOrden(
                 }
             }
         }
+        // Informe técnico y toma de fotografía durante la visita
         if (perfil == Perfil.TECNICO && orden.estado == EstadoOt.EN_VISITA) {
             item { Text("Informe técnico", style = MaterialTheme.typography.titleLarge) }
             item {
@@ -576,6 +620,7 @@ private fun DetalleOrden(
                 }
             }
         }
+        // Conformidad u observaciones por parte del Cliente
         if (perfil == Perfil.CLIENTE && orden.estado == EstadoOt.PENDIENTE_CONFORMIDAD) {
             item { Text("Revisar conformidad", style = MaterialTheme.typography.titleLarge) }
             item { CampoFormulario(formulario.observacion, { viewModel.cambiarObservacion(orden.id, it) },
@@ -589,6 +634,7 @@ private fun DetalleOrden(
                 }
             }
         }
+        // Respuesta del técnico a una observación del cliente
         if (perfil == Perfil.TECNICO && orden.estado == EstadoOt.OBSERVADA) {
             item { Text("Responder observación", style = MaterialTheme.typography.titleLarge) }
             item { CampoFormulario(formulario.respuesta, { viewModel.cambiarRespuesta(orden.id, it) }, "Respuesta al cliente",
@@ -601,6 +647,10 @@ private fun DetalleOrden(
     }
 }
 
+/**
+ * Campo de texto estandarizado (OutlinedTextField) con soporte para validación,
+ * mensaje de error e icono de advertencia (M3).
+ */
 @Composable
 private fun CampoFormulario(
     valor: String,
@@ -631,6 +681,9 @@ private fun CampoFormulario(
     )
 }
 
+/**
+ * Utilidad para capitalizar automáticamente la primera letra de cada oración.
+ */
 private fun capitalizarOraciones(texto: String): String = buildString {
     var inicio = true
     texto.forEach { letra ->
@@ -640,6 +693,9 @@ private fun capitalizarOraciones(texto: String): String = buildString {
     }
 }
 
+/**
+ * Mensaje de error para selección de chips (Tipo / Prioridad).
+ */
 @Composable
 private fun ErrorSeleccion(mensaje: String) {
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -649,6 +705,9 @@ private fun ErrorSeleccion(mensaje: String) {
     }
 }
 
+/**
+ * Componente para mostrar un par etiqueta-valor en la vista de detalle.
+ */
 @Composable
 private fun CampoDetalle(etiqueta: String, valor: String) {
     Column {
@@ -658,6 +717,9 @@ private fun CampoDetalle(etiqueta: String, valor: String) {
     }
 }
 
+/**
+ * Badge redondeado con color según el estado actual de la Orden de Trabajo.
+ */
 @Composable
 private fun EstadoBadge(estado: EstadoOt) {
     val colores = MaterialTheme.colorScheme
@@ -672,6 +734,9 @@ private fun EstadoBadge(estado: EstadoOt) {
     BadgeTexto(estado.etiqueta, fondo, texto)
 }
 
+/**
+ * Badge redondeado con color según la prioridad de la Orden de Trabajo.
+ */
 @Composable
 private fun PrioridadBadge(prioridad: PrioridadOt) {
     val colores = MaterialTheme.colorScheme
@@ -684,6 +749,9 @@ private fun PrioridadBadge(prioridad: PrioridadOt) {
     BadgeTexto("Prioridad ${prioridad.etiqueta.lowercase()}", fondo, texto)
 }
 
+/**
+ * Componente base para renderizar un Badge con fondo y texto personalizados.
+ */
 @Composable
 private fun BadgeTexto(etiqueta: String, fondo: Color, texto: Color) {
     Surface(
