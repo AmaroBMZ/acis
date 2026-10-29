@@ -1,11 +1,17 @@
 package com.proyecto.acis.data
 
+/**
+ * Perfiles de usuario disponibles en la demostración local de ACIS.
+ */
 enum class Perfil(val etiqueta: String) {
     PLANIFICADOR("Planificador"),
     TECNICO("Técnico"),
     CLIENTE("Cliente"),
 }
 
+/**
+ * Estados del ciclo de vida de una Orden de Trabajo.
+ */
 enum class EstadoOt(val etiqueta: String) {
     CREADA("Creada"),
     ASIGNADA("Asignada"),
@@ -16,12 +22,18 @@ enum class EstadoOt(val etiqueta: String) {
     CERRADA("Cerrada"),
 }
 
+/**
+ * Tipo de intervención requerida.
+ */
 enum class TipoOt(val etiqueta: String) {
     SIN_ESPECIFICAR("Sin especificar"),
     PREVENTIVA("Mantención preventiva"),
     CORRECTIVA("Reparación correctiva"),
 }
 
+/**
+ * Nivel de prioridad asignado a la OT.
+ */
 enum class PrioridadOt(val etiqueta: String) {
     SIN_ESPECIFICAR("Sin especificar"),
     BAJA("Baja"),
@@ -29,6 +41,9 @@ enum class PrioridadOt(val etiqueta: String) {
     ALTA("Alta"),
 }
 
+/**
+ * Modelo de datos que representa una Orden de Trabajo completa.
+ */
 data class OrdenTrabajo(
     val id: String,
     val local: String,

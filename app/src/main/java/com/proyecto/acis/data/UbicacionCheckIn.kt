@@ -10,6 +10,10 @@ import kotlin.coroutines.resume
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 
+/**
+ * Obtiene las coordenadas geográficas de la ubicación aproximada del dispositivo
+ * durante el check-in de una visita técnica. Retorna null si no hay permiso o señal.
+ */
 suspend fun obtenerUbicacionCheckIn(context: Context): String? {
     val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
     val ubicacion = withTimeoutOrNull(12000) {

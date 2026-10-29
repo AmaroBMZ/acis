@@ -6,7 +6,11 @@ import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
+/**
+ * Gestor de la base de datos SQLite local para el almacenamiento persistente de OTs sin conexión.
+ */
 class OrdenesDb(context: Context) : SQLiteOpenHelper(context, "acis_ordenes.db", null, 4) {
+    // Creación de la tabla principal de órdenes de trabajo
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""
             CREATE TABLE ordenes (
@@ -34,6 +38,7 @@ class OrdenesDb(context: Context) : SQLiteOpenHelper(context, "acis_ordenes.db",
         """.trimIndent())
     }
 
+    // Actualización progresiva del esquema de la base de datos
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) {
             db.execSQL("ALTER TABLE ordenes ADD COLUMN fotoEvidencia TEXT NOT NULL DEFAULT ''")
@@ -46,6 +51,7 @@ class OrdenesDb(context: Context) : SQLiteOpenHelper(context, "acis_ordenes.db",
         }
     }
 
+    // Lee la lista completa de órdenes almacenadas en SQLite
     fun leer(): List<OrdenTrabajo> = readableDatabase.query(
         "ordenes", null, null, null, null, null, "id ASC",
     ).use { cursor ->
@@ -80,12 +86,14 @@ class OrdenesDb(context: Context) : SQLiteOpenHelper(context, "acis_ordenes.db",
         }
     }
 
+    // Inserta una nueva orden en la base de datos
     fun insertar(orden: OrdenTrabajo): Boolean = try {
         writableDatabase.insert("ordenes", null, valores(orden)) != -1L
     } catch (_: Exception) {
         false
     }
 
+    // Actualiza los datos de una orden existente validando el estado anterior
     fun actualizar(orden: OrdenTrabajo, estadoAnterior: EstadoOt): Boolean = try {
         writableDatabase.update(
             "ordenes", valores(orden), "id = ? AND estado = ?",
@@ -95,6 +103,7 @@ class OrdenesDb(context: Context) : SQLiteOpenHelper(context, "acis_ordenes.db",
         false
     }
 
+    // Guarda una lista de órdenes dentro de una transacción atómica
     fun guardarTodas(ordenes: List<OrdenTrabajo>): Boolean {
         val db = writableDatabase
         return try {
@@ -111,6 +120,7 @@ class OrdenesDb(context: Context) : SQLiteOpenHelper(context, "acis_ordenes.db",
         }
     }
 
+    // Mapea un objeto OrdenTrabajo a ContentValues para operaciones SQLite
     private fun valores(orden: OrdenTrabajo) = ContentValues().apply {
         put("id", orden.id)
         put("local", orden.local)
