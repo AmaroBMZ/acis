@@ -19,6 +19,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -32,19 +33,26 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -54,23 +62,24 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.dp
-import androidx.core.content.FileProvider
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.proyecto.acis.data.EstadoOt
@@ -79,8 +88,8 @@ import com.proyecto.acis.data.Perfil
 import com.proyecto.acis.data.PrioridadOt
 import com.proyecto.acis.data.TipoOt
 import com.proyecto.acis.data.obtenerUbicacionCheckIn
-import java.util.Calendar
 import java.io.File
+import java.util.Calendar
 import java.util.Locale
 import java.util.UUID
 import kotlinx.coroutines.launch
@@ -93,106 +102,152 @@ private object RutasAcis {
     fun detalle(ordenId: String) = "detalle/$ordenId"
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
     val navController = rememberNavController()
     val ordenes by viewModel.ordenes.collectAsState()
     val perfil = viewModel.perfil
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val rutaActual = navBackStackEntry?.destination?.route
 
-    Column(modifier = modifier.fillMaxSize()) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = MaterialTheme.colorScheme.primaryContainer,
-        ) {
-            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
-                Text("ACIS", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer)
-                Text("Gestión de Órdenes de Trabajo · ACIS", style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer)
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                    Perfil.entries.forEach { opcion ->
-                        FilterChip(
-                            selected = perfil == opcion,
-                            onClick = {
-                                viewModel.seleccionarPerfil(opcion)
-                                navController.popBackStack(RutasAcis.ORDENES, inclusive = false)
-                            },
-                            label = { Text(opcion.etiqueta) },
-                        )
-                    }
-                }
-            }
-        }
-        HorizontalDivider()
-        NavHost(
-            navController = navController,
-            startDestination = RutasAcis.ORDENES,
-            modifier = Modifier.weight(1f),
-            enterTransition = {
-                fadeIn(tween(420)) + slideIntoContainer(
-                    towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                    animationSpec = tween(420),
-                )
-            },
-            exitTransition = {
-                fadeOut(tween(350)) + slideOutOfContainer(
-                    towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                    animationSpec = tween(350),
-                )
-            },
-            popEnterTransition = {
-                fadeIn(tween(420)) + slideIntoContainer(
-                    towards = AnimatedContentTransitionScope.SlideDirection.End,
-                    animationSpec = tween(420),
-                )
-            },
-            popExitTransition = {
-                fadeOut(tween(350)) + slideOutOfContainer(
-                    towards = AnimatedContentTransitionScope.SlideDirection.End,
-                    animationSpec = tween(350),
-                )
-            },
-        ) {
-            composable(RutasAcis.ORDENES) {
-                Crossfade(targetState = perfil, animationSpec = tween(420), label = "cambio de perfil") { perfilVisible ->
-                    ListaOrdenes(
-                        ordenes = viewModel.ordenesParaPerfil(ordenes, perfilVisible),
-                        perfil = perfilVisible,
-                        onCrear = { navController.navigate(RutasAcis.CREAR) },
-                        onSeleccionar = { navController.navigate(RutasAcis.detalle(it)) },
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        topBar = {
+            TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    titleContentColor = MaterialTheme.colorScheme.onPrimary,
+                ),
+                title = {
+                    Text(
+                        text = "ACIS · Servicios Técnicos",
+                        fontWeight = FontWeight.Bold,
+                    )
+                },
+            )
+        },
+        floatingActionButton = {
+            if (rutaActual == RutasAcis.ORDENES && perfil == Perfil.PLANIFICADOR) {
+                FloatingActionButton(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    shape = CircleShape,
+                    onClick = { navController.navigate(RutasAcis.CREAR) },
+                ) {
+                    Text(
+                        text = "+",
+                        fontSize = 32.sp,
+                        fontWeight = FontWeight.Bold,
                     )
                 }
             }
-            composable(RutasAcis.CREAR) {
-                CrearOrden(
-                    viewModel = viewModel,
-                    onVolver = { navController.popBackStack() },
-                    onCrear = {
-                        val id = viewModel.crear()
-                        if (id != null) {
-                            navController.navigate(RutasAcis.detalle(id)) {
-                                popUpTo(RutasAcis.ORDENES) { inclusive = false }
-                                launchSingleTop = true
+        },
+    ) { paddingValues ->
+        Box(
+            modifier = Modifier
+                .padding(paddingValues)
+                .fillMaxSize(),
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                ) {
+                    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
+                        Text(
+                            text = "Gestión de Órdenes de Trabajo",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        ) {
+                            Perfil.entries.forEach { opcion ->
+                                FilterChip(
+                                    selected = perfil == opcion,
+                                    onClick = {
+                                        viewModel.seleccionarPerfil(opcion)
+                                        navController.popBackStack(RutasAcis.ORDENES, inclusive = false)
+                                    },
+                                    label = { Text(opcion.etiqueta) },
+                                )
                             }
                         }
+                    }
+                }
+                HorizontalDivider()
+                NavHost(
+                    navController = navController,
+                    startDestination = RutasAcis.ORDENES,
+                    modifier = Modifier.weight(1f),
+                    enterTransition = {
+                        fadeIn(tween(420)) + slideIntoContainer(
+                            towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                            animationSpec = tween(420),
+                        )
                     },
-                )
-            }
-            composable(
-                route = RutasAcis.DETALLE,
-                arguments = listOf(navArgument("ordenId") { type = NavType.StringType }),
-            ) { entrada ->
-                val ordenId = entrada.arguments?.getString("ordenId")
-                val orden = ordenes.firstOrNull { it.id == ordenId }
-                if (orden != null) {
-                    DetalleOrden(
-                        orden = orden,
-                        perfil = perfil,
-                        viewModel = viewModel,
-                        onVolver = { navController.popBackStack() },
-                    )
+                    exitTransition = {
+                        fadeOut(tween(350)) + slideOutOfContainer(
+                            towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                            animationSpec = tween(350),
+                        )
+                    },
+                    popEnterTransition = {
+                        fadeIn(tween(420)) + slideIntoContainer(
+                            towards = AnimatedContentTransitionScope.SlideDirection.End,
+                            animationSpec = tween(420),
+                        )
+                    },
+                    popExitTransition = {
+                        fadeOut(tween(350)) + slideOutOfContainer(
+                            towards = AnimatedContentTransitionScope.SlideDirection.End,
+                            animationSpec = tween(350),
+                        )
+                    },
+                ) {
+                    composable(RutasAcis.ORDENES) {
+                        Crossfade(targetState = perfil, animationSpec = tween(420), label = "cambio de perfil") { perfilVisible ->
+                            ListaOrdenes(
+                                ordenes = viewModel.ordenesParaPerfil(ordenes, perfilVisible),
+                                perfil = perfilVisible,
+                                onSeleccionar = { navController.navigate(RutasAcis.detalle(it)) },
+                            )
+                        }
+                    }
+                    composable(RutasAcis.CREAR) {
+                        CrearOrden(
+                            viewModel = viewModel,
+                            onVolver = { navController.popBackStack() },
+                            onCrear = {
+                                val id = viewModel.crear()
+                                if (id != null) {
+                                    navController.navigate(RutasAcis.detalle(id)) {
+                                        popUpTo(RutasAcis.ORDENES) { inclusive = false }
+                                        launchSingleTop = true
+                                    }
+                                }
+                            },
+                        )
+                    }
+                    composable(
+                        route = RutasAcis.DETALLE,
+                        arguments = listOf(navArgument("ordenId") { type = NavType.StringType }),
+                    ) { entrada ->
+                        val ordenId = entrada.arguments?.getString("ordenId")
+                        val orden = ordenes.firstOrNull { it.id == ordenId }
+                        if (orden != null) {
+                            DetalleOrden(
+                                orden = orden,
+                                perfil = perfil,
+                                viewModel = viewModel,
+                                onVolver = { navController.popBackStack() },
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -203,7 +258,6 @@ fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
 private fun ListaOrdenes(
     ordenes: List<OrdenTrabajo>,
     perfil: Perfil,
-    onCrear: () -> Unit,
     onSeleccionar: (String) -> Unit,
 ) {
     LazyColumn(
@@ -221,17 +275,18 @@ private fun ListaOrdenes(
                     },
                     style = MaterialTheme.typography.headlineSmall,
                 )
-                if (perfil == Perfil.PLANIFICADOR) Button(onClick = onCrear) { Text("Crear OT") }
-                Text("Registro local con soporte para perfiles, ubicación y fotos de evidencia.",
+                Text(
+                    "Registro local con soporte para perfiles, ubicación y fotos de evidencia.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
         if (ordenes.isEmpty()) {
             item {
                 Text(
                     when (perfil) {
-                        Perfil.PLANIFICADOR -> "Todavía no hay órdenes. Crea la primera OT."
+                        Perfil.PLANIFICADOR -> "Todavía no hay órdenes. Presiona el botón + para crear la primera OT."
                         Perfil.TECNICO -> "No tienes órdenes asignadas. Cambia a Planificador y asigna una OT."
                         Perfil.CLIENTE -> "No hay informes pendientes de conformidad."
                     },
