@@ -4,7 +4,7 @@ Aplicación móvil Android nativa desarrollada en **Kotlin** con **Jetpack Compo
 
 ---
 
-## ❄️ Sobre la Empresa y el Proyecto
+##  Sobre la Empresa y el Proyecto
 
 **ACIS Servicios Técnicos Ltda.** presta servicios de ingeniería, instalación, reparación y mantenimiento preventivo/correctivo para sistemas de climatización (HVAC - aire acondicionado, chillers, fancoils) y equipos de refrigeración comercial (cámaras frigoríficas, congeladores) en locales comerciales, supermercados e industrias.
 
@@ -12,7 +12,7 @@ Esta aplicación reemplaza los registros en papel y mensajería por una solució
 
 ---
 
-## 📱 Funcionalidades Principales
+##  Funcionalidades Principales
 
 La aplicación permite recorrer el ciclo completo de una Orden de Trabajo utilizando un selector de perfiles de demostración:
 
@@ -35,7 +35,7 @@ La aplicación permite recorrer el ciclo completo de una Orden de Trabajo utiliz
 
 ---
 
-## 🛠️ Tecnologías y Arquitectura
+##  Tecnologías y Arquitectura
 
 - **Lenguaje**: Kotlin
 - **UI**: Jetpack Compose con **Material Design 3**
@@ -49,7 +49,7 @@ La aplicación permite recorrer el ciclo completo de una Orden de Trabajo utiliz
 
 ---
 
-## 📁 Estructura del Código
+##  Estructura del Código
 
 ```text
 com.proyecto.acis/
@@ -69,7 +69,7 @@ com.proyecto.acis/
 
 ---
 
-## 🚀 Requisitos para Ejecutar el Proyecto
+##  Requisitos para Ejecutar el Proyecto
 
 1. **Android Studio** Ladybug / Jellyfish o superior.
 2. **Android SDK 37** (mínimo soportado: Android 7.0 - API 24).
@@ -81,8 +81,8 @@ com.proyecto.acis/
 
 ---
 
-## 🎓 Información Académica
+##  Información Académica
 
 - **Asignatura**: Desarrollo de Aplicaciones Móviles (DSY1105)
 - **Institución**: Duoc UC
-- **Integrante**: Amaro Barria
+- **Integrante**: Amaro Barria, Felipe Hernadez
