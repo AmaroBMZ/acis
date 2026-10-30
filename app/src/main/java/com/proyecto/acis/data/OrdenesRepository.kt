@@ -123,13 +123,19 @@ class OrdenesRepository(context: Context) {
         return true
     }
 
-    // Carga las órdenes almacenadas en SQLite
+    // Carga las órdenes almacenadas en SQLite o las inicializa con datos de demostración
     private fun cargarOrdenes(): List<OrdenTrabajo> {
         val actuales = database.leer()
         if (actuales.isNotEmpty()) return actuales
         val anteriores = leerOrdenesAnteriores()
-        if (anteriores.isNotEmpty()) database.guardarTodas(anteriores)
-        return anteriores
+        if (anteriores.isNotEmpty()) {
+            database.guardarTodas(anteriores)
+            return anteriores
+        }
+        // Inicializar datos semilla para demostración interactiva
+        val semillas = obtenerOrdenesSemilla()
+        database.guardarTodas(semillas)
+        return semillas
     }
 
     // Genera una marca de tiempo secuencial para ordenamiento
@@ -167,6 +173,115 @@ class OrdenesRepository(context: Context) {
         }
     } catch (_: Exception) {
         emptyList()
+    }
+
+    // Genera órdenes de ejemplo cubriendo cada estado del flujo de ACIS
+    private fun obtenerOrdenesSemilla(): List<OrdenTrabajo> {
+        val baseTime = System.currentTimeMillis()
+        return listOf(
+            OrdenTrabajo(
+                id = "OT-1001",
+                local = "Mall Plaza Vespucio · Local 210",
+                equipo = "Rooftop Carrier 15 TR",
+                descripcion = "Equipo no enfría adecuadamente la zona de cajas. Ruido inusual en compresor.",
+                fechaProgramada = "28/10/2026 10:00",
+                tipo = TipoOt.CORRECTIVA,
+                prioridad = PrioridadOt.ALTA,
+                estado = EstadoOt.CREADA,
+                ultimaActualizacion = baseTime,
+            ),
+            OrdenTrabajo(
+                id = "OT-1002",
+                local = "Supermercado Unimarc · Providencia",
+                equipo = "Cámara Frigorífica de Lácteos Bitzer",
+                descripcion = "Mantención preventiva trimestral y medición de presión R404A.",
+                fechaProgramada = "28/10/2026 11:30",
+                tipo = TipoOt.PREVENTIVA,
+                prioridad = PrioridadOt.MEDIA,
+                estado = EstadoOt.ASIGNADA,
+                tecnico = TECNICO_DEMO,
+                ultimaActualizacion = baseTime + 1,
+            ),
+            OrdenTrabajo(
+                id = "OT-1003",
+                local = "Banco Chile · Ahumada 140",
+                equipo = "Chiller Fancoil 30 TR",
+                descripcion = "Revisión de fuga de refrigerante y limpieza de condensador.",
+                fechaProgramada = "28/10/2026 14:00",
+                tipo = TipoOt.CORRECTIVA,
+                prioridad = PrioridadOt.ALTA,
+                estado = EstadoOt.ACEPTADA,
+                tecnico = TECNICO_DEMO,
+                ultimaActualizacion = baseTime + 2,
+            ),
+            OrdenTrabajo(
+                id = "OT-1004",
+                local = "Clínica Indisa · Pabellón 3",
+                equipo = "Unidad Manejadora de Aire (UMA) Trane",
+                descripcion = "Calibración de termostato digital y cambio de correas de ventilador.",
+                fechaProgramada = "28/10/2026 09:00",
+                tipo = TipoOt.PREVENTIVA,
+                prioridad = PrioridadOt.ALTA,
+                estado = EstadoOt.EN_VISITA,
+                tecnico = TECNICO_DEMO,
+                checkIn = "28/10/2026 09:15",
+                ubicacionCheckIn = "-33.4372, -70.6506",
+                ultimaActualizacion = baseTime + 3,
+            ),
+            OrdenTrabajo(
+                id = "OT-1005",
+                local = "Restaurante La Mar · Vitacura",
+                equipo = "Visicooler Industrial Mantenimiento",
+                descripcion = "Carga de gas refrigerante R134a y limpieza de evaporador.",
+                fechaProgramada = "27/10/2026 16:00",
+                tipo = TipoOt.CORRECTIVA,
+                prioridad = PrioridadOt.MEDIA,
+                estado = EstadoOt.PENDIENTE_CONFORMIDAD,
+                tecnico = TECNICO_DEMO,
+                checkIn = "27/10/2026 16:10",
+                checkOut = "27/10/2026 18:00",
+                diagnostico = "Presión baja por pequeña fuga en válvula de servicio.",
+                actividad = "Se reemplazó válvula Schrader, se presurizó y realizó carga completa de gas R134a.",
+                materiales = "1x Válvula Schrader, 2.5 kg Gas R134a",
+                ultimaActualizacion = baseTime + 4,
+            ),
+            OrdenTrabajo(
+                id = "OT-1006",
+                local = "Centro Logístico Pudahuel · Bodega 5",
+                equipo = "Condensador Exterior Evaporativo 50 TR",
+                descripcion = "Limpieza química de serpentines exteriores.",
+                fechaProgramada = "26/10/2026 15:00",
+                tipo = TipoOt.PREVENTIVA,
+                prioridad = PrioridadOt.BAJA,
+                estado = EstadoOt.OBSERVADA,
+                tecnico = TECNICO_DEMO,
+                checkIn = "26/10/2026 15:10",
+                checkOut = "26/10/2026 17:00",
+                diagnostico = "Serpentín obstruido por polvo y suciedad ambiental.",
+                actividad = "Lavado con hidrolavadora y producto desincrustante.",
+                materiales = "2L Limpiador alcalino",
+                observacionCliente = "El equipo funciona bien, pero falta adjuntar la medición de consumo eléctrico (amperaje).",
+                ultimaActualizacion = baseTime + 5,
+            ),
+            OrdenTrabajo(
+                id = "OT-1007",
+                local = "Oficinas Enel · Torre B Piso 4",
+                equipo = "Sistema VRV Daikin Mantenimiento Anual",
+                descripcion = "Mantenimiento integral anual del sistema de climatización.",
+                fechaProgramada = "25/10/2026 09:00",
+                tipo = TipoOt.PREVENTIVA,
+                prioridad = PrioridadOt.BAJA,
+                estado = EstadoOt.CERRADA,
+                tecnico = TECNICO_DEMO,
+                checkIn = "25/10/2026 09:10",
+                checkOut = "25/10/2026 13:00",
+                diagnostico = "Unidades interiores y exterior en óptimo estado operacional.",
+                actividad = "Limpieza de filtros, verificación de presiones y reapriete de conexiones eléctricas.",
+                materiales = "Filtros lavables, limpiador dieléctrico",
+                fechaConformidad = "25/10/2026 13:15",
+                ultimaActualizacion = baseTime + 6,
+            ),
+        )
     }
 
     companion object {
