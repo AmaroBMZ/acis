@@ -103,6 +103,13 @@ class OrdenesDb(context: Context) : SQLiteOpenHelper(context, "acis_ordenes.db",
         false
     }
 
+    // Elimina una orden de trabajo de la base de datos local por su identificador
+    fun borrar(id: String): Boolean = try {
+        writableDatabase.delete("ordenes", "id = ?", arrayOf(id)) == 1
+    } catch (_: Exception) {
+        false
+    }
+
     // Guarda una lista de órdenes dentro de una transacción atómica
     fun guardarTodas(ordenes: List<OrdenTrabajo>): Boolean {
         val db = writableDatabase

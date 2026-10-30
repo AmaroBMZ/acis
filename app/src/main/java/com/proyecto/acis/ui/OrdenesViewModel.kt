@@ -162,6 +162,13 @@ class OrdenesViewModel(application: Application) : AndroidViewModel(application)
 
     fun aprobar(id: String) = repository.aprobar(id)
 
+    // Elimina la orden de trabajo seleccionada
+    fun borrar(id: String): Boolean {
+        val borrado = repository.borrar(id)
+        mensajeDetalle = id to if (borrado) "Orden eliminada." else "No se pudo eliminar la orden."
+        return borrado
+    }
+
     // Guarda borrador de avance del informe técnico sin cambiar el estado
     fun guardarBorrador(id: String, diagnostico: String, actividad: String, materiales: String) {
         val guardado = repository.guardarBorrador(id, diagnostico, actividad, materiales)

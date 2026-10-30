@@ -36,7 +36,9 @@ import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -451,7 +453,7 @@ private fun CrearOrden(
 /**
  * Pantalla de detalle e intervención técnica de una Orden de Trabajo.
  * Permite realizar check-in con ubicación, capturar foto de evidencia,
- * completar el informe, revisar observaciones y dar conformidad.
+ * completar el informe, revisar observaciones, dar conformidad y eliminar la orden.
  */
 @Composable
 private fun DetalleOrden(
@@ -642,6 +644,46 @@ private fun DetalleOrden(
             item { Button(onClick = {
                 viewModel.responderObservacion(orden.id, formulario.respuesta)
             }) { Text("Enviar respuesta") } }
+        }
+        // Opción para eliminar la OT (disponible para el Planificador)
+        if (perfil == Perfil.PLANIFICADOR) {
+            item {
+                var mostrarConfirmacion by rememberSaveable(orden.id) { mutableStateOf(false) }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { mostrarConfirmacion = true },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Eliminar esta orden de trabajo")
+                    }
+                    if (mostrarConfirmacion) {
+                        AlertDialog(
+                            onDismissRequest = { mostrarConfirmacion = false },
+                            title = { Text("Eliminar Orden de Trabajo") },
+                            text = { Text("¿Estás seguro de que deseas eliminar la orden ${orden.id}? Esta acción borrará permanentemente sus registros de terreno y foto de evidencia.") },
+                            confirmButton = {
+                                Button(
+                                    onClick = {
+                                        mostrarConfirmacion = false
+                                        if (viewModel.borrar(orden.id)) {
+                                            onVolver()
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                                ) {
+                                    Text("Eliminar")
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { mostrarConfirmacion = false }) {
+                                    Text("Cancelar")
+                                }
+                            },
+                        )
+                    }
+                }
+            }
         }
         if (mensaje.isNotBlank()) item { Text(mensaje, color = MaterialTheme.colorScheme.primary) }
     }

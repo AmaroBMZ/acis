@@ -114,6 +114,17 @@ class OrdenesRepository(context: Context) {
         it.copy(estado = EstadoOt.CERRADA, fechaConformidad = ahora())
     }
 
+    // Elimina una Orden de Trabajo, borrando su archivo de foto y su registro en SQLite
+    fun borrar(id: String): Boolean {
+        val actual = _ordenes.value.firstOrNull { it.id == id } ?: return false
+        if (actual.fotoEvidencia.isNotBlank()) {
+            File(fotos, actual.fotoEvidencia).delete()
+        }
+        if (!database.borrar(id)) return false
+        _ordenes.value = _ordenes.value.filterNot { it.id == id }
+        return true
+    }
+
     // Función auxiliar para aplicar y persistir cambios de estado de manera atómica
     private fun cambiar(id: String, estadoRequerido: EstadoOt, cambio: (OrdenTrabajo) -> OrdenTrabajo): Boolean {
         val actual = _ordenes.value.firstOrNull { it.id == id && it.estado == estadoRequerido } ?: return false
