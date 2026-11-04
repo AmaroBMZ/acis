@@ -29,6 +29,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.relocation.BringIntoViewRequester
@@ -44,7 +46,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -53,8 +54,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -63,6 +62,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
@@ -106,9 +106,7 @@ private object RutasAcis {
 }
 
 /**
- * Contenedor principal de la interfaz ACIS.
- * Configura el Scaffold, la barra superior (TopAppBar), el botón flotante (FAB)
- * y el selector de perfiles (FilterChips).
+ * Contenedor principal de la interfaz ACIS adaptado al diseño de referencia.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -119,24 +117,8 @@ fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val rutaActual = navBackStackEntry?.destination?.route
 
-    // Estructura principal con barra superior y botón de acción flotante (M3)
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        topBar = {
-            // Barra superior institucional de la aplicación
-            TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimary,
-                ),
-                title = {
-                    Text(
-                        text = "ACIS · Servicios Técnicos",
-                        fontWeight = FontWeight.Bold,
-                    )
-                },
-            )
-        },
         floatingActionButton = {
             // Botón flotante (+) para crear nueva OT (visible para Planificador en la lista)
             if (rutaActual == RutasAcis.ORDENES && perfil == Perfil.PLANIFICADOR) {
@@ -155,116 +137,82 @@ fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
             }
         },
     ) { paddingValues ->
-        // Contenedor Box respetando los márgenes del Scaffold
         Box(
             modifier = Modifier
                 .padding(paddingValues)
                 .fillMaxSize(),
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                // Franja de selección rápida de perfil de usuario (Planificador / Técnico / Cliente)
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                ) {
-                    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
-                        Text(
-                            text = "Gestión de Órdenes de Trabajo",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+            // Navegador entre la lista de OTs, creación de nueva OT y vista de detalle
+            NavHost(
+                navController = navController,
+                startDestination = RutasAcis.ORDENES,
+                modifier = Modifier.fillMaxSize(),
+                enterTransition = {
+                    fadeIn(tween(380)) + slideIntoContainer(
+                        towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                        animationSpec = tween(380),
+                    )
+                },
+                exitTransition = {
+                    fadeOut(tween(320)) + slideOutOfContainer(
+                        towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                        animationSpec = tween(320),
+                    )
+                },
+                popEnterTransition = {
+                    fadeIn(tween(380)) + slideIntoContainer(
+                        towards = AnimatedContentTransitionScope.SlideDirection.End,
+                        animationSpec = tween(380),
+                    )
+                },
+                popExitTransition = {
+                    fadeOut(tween(320)) + slideOutOfContainer(
+                        towards = AnimatedContentTransitionScope.SlideDirection.End,
+                        animationSpec = tween(320),
+                    )
+                },
+            ) {
+                // Pantalla principal adaptada con la distribución del prototipo
+                composable(RutasAcis.ORDENES) {
+                    Crossfade(targetState = perfil, animationSpec = tween(380), label = "cambio de perfil") { perfilVisible ->
+                        ListaOrdenesAdaptada(
+                            ordenes = viewModel.ordenesParaPerfil(ordenes, perfilVisible),
+                            perfil = perfilVisible,
+                            onSeleccionarPerfil = { nuevo -> viewModel.seleccionarPerfil(nuevo) },
+                            onSeleccionar = { id -> navController.navigate(RutasAcis.detalle(id)) },
                         )
-                        Spacer(Modifier.height(8.dp))
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        ) {
-                            Perfil.entries.forEach { opcion ->
-                                FilterChip(
-                                    selected = perfil == opcion,
-                                    onClick = {
-                                        viewModel.seleccionarPerfil(opcion)
-                                        navController.popBackStack(RutasAcis.ORDENES, inclusive = false)
-                                    },
-                                    label = { Text(opcion.etiqueta) },
-                                )
-                            }
-                        }
                     }
                 }
-                HorizontalDivider()
-
-                // Navegador entre la lista de OTs, creación de nueva OT y vista de detalle
-                NavHost(
-                    navController = navController,
-                    startDestination = RutasAcis.ORDENES,
-                    modifier = Modifier.weight(1f),
-                    enterTransition = {
-                        fadeIn(tween(420)) + slideIntoContainer(
-                            towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                            animationSpec = tween(420),
-                        )
-                    },
-                    exitTransition = {
-                        fadeOut(tween(350)) + slideOutOfContainer(
-                            towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                            animationSpec = tween(350),
-                        )
-                    },
-                    popEnterTransition = {
-                        fadeIn(tween(420)) + slideIntoContainer(
-                            towards = AnimatedContentTransitionScope.SlideDirection.End,
-                            animationSpec = tween(420),
-                        )
-                    },
-                    popExitTransition = {
-                        fadeOut(tween(350)) + slideOutOfContainer(
-                            towards = AnimatedContentTransitionScope.SlideDirection.End,
-                            animationSpec = tween(350),
-                        )
-                    },
-                ) {
-                    // Pantalla de lista de órdenes
-                    composable(RutasAcis.ORDENES) {
-                        Crossfade(targetState = perfil, animationSpec = tween(420), label = "cambio de perfil") { perfilVisible ->
-                            ListaOrdenes(
-                                ordenes = viewModel.ordenesParaPerfil(ordenes, perfilVisible),
-                                perfil = perfilVisible,
-                                onSeleccionar = { navController.navigate(RutasAcis.detalle(it)) },
-                            )
-                        }
-                    }
-                    // Pantalla de formulario para crear OT
-                    composable(RutasAcis.CREAR) {
-                        CrearOrden(
+                // Pantalla de formulario para crear OT
+                composable(RutasAcis.CREAR) {
+                    CrearOrden(
+                        viewModel = viewModel,
+                        onVolver = { navController.popBackStack() },
+                        onCrear = {
+                            val id = viewModel.crear()
+                            if (id != null) {
+                                navController.navigate(RutasAcis.detalle(id)) {
+                                    popUpTo(RutasAcis.ORDENES) { inclusive = false }
+                                    launchSingleTop = true
+                                }
+                            }
+                        },
+                    )
+                }
+                // Pantalla de detalle e intervención de la OT
+                composable(
+                    route = RutasAcis.DETALLE,
+                    arguments = listOf(navArgument("ordenId") { type = NavType.StringType }),
+                ) { entrada ->
+                    val ordenId = entrada.arguments?.getString("ordenId")
+                    val orden = ordenes.firstOrNull { it.id == ordenId }
+                    if (orden != null) {
+                        DetalleOrden(
+                            orden = orden,
+                            perfil = perfil,
                             viewModel = viewModel,
                             onVolver = { navController.popBackStack() },
-                            onCrear = {
-                                val id = viewModel.crear()
-                                if (id != null) {
-                                    navController.navigate(RutasAcis.detalle(id)) {
-                                        popUpTo(RutasAcis.ORDENES) { inclusive = false }
-                                        launchSingleTop = true
-                                    }
-                                }
-                            },
                         )
-                    }
-                    // Pantalla de detalle e intervención de la OT
-                    composable(
-                        route = RutasAcis.DETALLE,
-                        arguments = listOf(navArgument("ordenId") { type = NavType.StringType }),
-                    ) { entrada ->
-                        val ordenId = entrada.arguments?.getString("ordenId")
-                        val orden = ordenes.firstOrNull { it.id == ordenId }
-                        if (orden != null) {
-                            DetalleOrden(
-                                orden = orden,
-                                perfil = perfil,
-                                viewModel = viewModel,
-                                onVolver = { navController.popBackStack() },
-                            )
-                        }
                     }
                 }
             }
@@ -273,69 +221,252 @@ fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
 }
 
 /**
- * Muestra la lista de Órdenes de Trabajo en tarjetas Material 3.
- * Filtra las órdenes automáticamente según el perfil activo.
+ * Vista principal inspirada en la distribución de la captura de pantalla:
+ * 1. Encabezado con Avatar e Identidad de la aplicación ("ACIS · Servicios Técnicos").
+ * 2. Tarjeta contenedora de selección de Perfil.
+ * 3. Tarjeta destacada de Orden de Trabajo Reciente.
+ * 4. Listado completo de "Todas las Órdenes de Trabajo".
  */
 @Composable
-private fun ListaOrdenes(
+private fun ListaOrdenesAdaptada(
     ordenes: List<OrdenTrabajo>,
     perfil: Perfil,
+    onSeleccionarPerfil: (Perfil) -> Unit,
     onSeleccionar: (String) -> Unit,
 ) {
+    val ordenReciente = ordenes.firstOrNull()
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        // 1. ENCABEZADO CON NOMBRE DE LA APLICACIÓN Y AVATAR
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // Avatar con iniciales ACIS
+                Surface(
+                    modifier = Modifier.size(52.dp),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "AC",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(14.dp))
+                Column {
+                    Text(
+                        text = "ACIS · Servicios Técnicos",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = "Climatización & Refrigeración",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        // 2. SECTOR DE SELECCIÓN DE PERFIL ACTIVO
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Perfil activo: ${perfil.etiqueta}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    ) {
+                        Perfil.entries.forEach { opcion ->
+                            FilterChip(
+                                selected = perfil == opcion,
+                                onClick = { onSeleccionarPerfil(opcion) },
+                                label = { Text(opcion.etiqueta) },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. TARJETA DESTACADA: ÓRDENES RECIENTES
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (ordenReciente != null) Modifier.clickable { onSeleccionar(ordenReciente.id) }
+                        else Modifier
+                    ),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                        ) {
+                            Text(
+                                text = "🛠️",
+                                modifier = Modifier.padding(8.dp),
+                                fontSize = 16.sp,
+                            )
+                        }
+                        if (ordenReciente != null) {
+                            EstadoBadge(ordenReciente.estado)
+                        }
+                    }
+
+                    if (ordenReciente != null) {
+                        Text(
+                            text = "¡Última orden creada!",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            text = "${ordenReciente.id} · ${ordenReciente.local}",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                        Text(
+                            text = "Equipo: ${ordenReciente.equipo}\n${ordenReciente.descripcion}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f),
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            PrioridadBadge(ordenReciente.prioridad)
+                            Text(
+                                text = "Programado: ${ordenReciente.fechaProgramada}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = "¡No hay órdenes recientes!",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                        Text(
+                            text = "Cambia de perfil o presiona el botón + para registrar la primera orden de trabajo en el sistema.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f),
+                        )
+                    }
+                }
+            }
+        }
+
+        // 4. SECCIÓN: TODAS LAS ÓRDENES DE TRABAJO
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(
-                    when (perfil) {
-                        Perfil.PLANIFICADOR -> "Órdenes de trabajo"
-                        Perfil.TECNICO -> "Mis órdenes asignadas"
-                        Perfil.CLIENTE -> "Órdenes para revisión"
-                    },
-                    style = MaterialTheme.typography.headlineSmall,
+                    text = "Todas las órdenes (${ordenes.size})",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
                 )
+            }
+        }
+
+        if (ordenes.isEmpty()) {
+            item {
                 Text(
-                    "Registro local con soporte para perfiles, ubicación y fotos de evidencia.",
-                    style = MaterialTheme.typography.bodySmall,
+                    text = "No hay órdenes disponibles para este perfil.",
+                    style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
-        if (ordenes.isEmpty()) {
-            item {
-                Text(
-                    when (perfil) {
-                        Perfil.PLANIFICADOR -> "Todavía no hay órdenes. Presiona el botón + para crear la primera OT."
-                        Perfil.TECNICO -> "No tienes órdenes asignadas. Cambia a Planificador y asigna una OT."
-                        Perfil.CLIENTE -> "No hay informes pendientes de conformidad."
-                    },
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-            }
-        }
-        // Tarjetas individuales de cada OT
+
+        // Listado de cada una de las órdenes
         items(ordenes, key = { it.id }) { orden ->
             Card(
-                modifier = Modifier.fillMaxWidth().clickable { onSeleccionar(orden.id) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onSeleccionar(orden.id) },
+                shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(orden.id, style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary)
-                    AnimatedContent(targetState = orden.estado, label = "estado de OT") { estado ->
-                        EstadoBadge(estado)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            orden.id,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        EstadoBadge(orden.estado)
                     }
-                    Text(orden.local, style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold)
-                    Text(orden.equipo, style = MaterialTheme.typography.bodyMedium)
-                    Text(orden.tipo.etiqueta, style = MaterialTheme.typography.bodySmall)
-                    PrioridadBadge(orden.prioridad)
-                    Text(orden.fechaProgramada, style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        orden.local,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        orden.equipo,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            orden.tipo.etiqueta,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        PrioridadBadge(orden.prioridad)
+                    }
+                    Text(
+                        "Programado: ${orden.fechaProgramada}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
@@ -369,7 +500,7 @@ private fun CrearOrden(
         contentPadding = PaddingValues(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item { TextButton(onClick = onVolver) { Text("← Volver") } }
+        item { TextButton(onClick = onVolver) { Text("← Volver a la lista") } }
         item { Text("Nueva orden de trabajo", style = MaterialTheme.typography.headlineSmall) }
         item { CampoFormulario(datos.local, viewModel::cambiarLocal, "Local", errores.local) }
         item { CampoFormulario(datos.equipo, viewModel::cambiarEquipo, "Equipo", errores.equipo) }
@@ -441,11 +572,14 @@ private fun CrearOrden(
             Text("No se pudo guardar la OT.", color = MaterialTheme.colorScheme.error)
         }
         item {
-            Button(onClick = {
-                focusManager.clearFocus()
-                keyboardController?.hide()
-                onCrear()
-            }) { Text("Guardar OT") }
+            Button(
+                onClick = {
+                    focusManager.clearFocus()
+                    keyboardController?.hide()
+                    onCrear()
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Guardar OT") }
         }
     }
 }
@@ -503,7 +637,7 @@ private fun DetalleOrden(
         contentPadding = PaddingValues(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        item { TextButton(onClick = onVolver) { Text("← Volver a órdenes") } }
+        item { TextButton(onClick = onVolver) { Text("← Volver a la lista") } }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(orden.id, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
@@ -554,11 +688,11 @@ private fun DetalleOrden(
         }
         // Asignación por el Planificador
         if (perfil == Perfil.PLANIFICADOR && orden.estado == EstadoOt.CREADA) {
-            item { Button(onClick = { viewModel.asignar(orden.id) }) { Text("Asignar a técnico demo") } }
+            item { Button(onClick = { viewModel.asignar(orden.id) }, modifier = Modifier.fillMaxWidth()) { Text("Asignar a técnico demo") } }
         }
         // Aceptación por el Técnico
         if (perfil == Perfil.TECNICO && orden.estado == EstadoOt.ASIGNADA) {
-            item { Button(onClick = { viewModel.aceptar(orden.id) }) { Text("Aceptar OT") } }
+            item { Button(onClick = { viewModel.aceptar(orden.id) }, modifier = Modifier.fillMaxWidth()) { Text("Aceptar OT") } }
         }
         // Check-in con ubicación por el Técnico
         if (perfil == Perfil.TECNICO && orden.estado == EstadoOt.ACEPTADA) {
@@ -570,7 +704,7 @@ private fun DetalleOrden(
                         if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION)
                             == PackageManager.PERMISSION_GRANTED) iniciarConUbicacion()
                         else permisoUbicacion.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
-                    }, enabled = !buscandoUbicacion) {
+                    }, enabled = !buscandoUbicacion, modifier = Modifier.fillMaxWidth()) {
                         Text(if (buscandoUbicacion) "Buscando ubicación..." else "Iniciar visita y registrar check-in")
                     }
                 }
@@ -603,7 +737,7 @@ private fun DetalleOrden(
                         fotoPendiente = ""
                         errorCamara = "No se pudo abrir la cámara."
                     }
-                }) { Text(if (orden.fotoEvidencia.isBlank()) "Tomar foto de evidencia" else "Cambiar foto de evidencia") }
+                }, modifier = Modifier.fillMaxWidth()) { Text(if (orden.fotoEvidencia.isBlank()) "Tomar foto de evidencia" else "Cambiar foto de evidencia") }
             }
             if (errorCamara.isNotBlank()) item { Text(errorCamara, color = MaterialTheme.colorScheme.error) }
             item { CampoFormulario(formulario.diagnostico, { viewModel.cambiarDiagnostico(orden.id, it) }, "Diagnóstico",
@@ -615,10 +749,10 @@ private fun DetalleOrden(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = {
                         viewModel.guardarBorrador(orden.id, formulario.diagnostico, formulario.actividad, formulario.materiales)
-                    }) { Text("Guardar borrador") }
+                    }, modifier = Modifier.fillMaxWidth()) { Text("Guardar borrador") }
                     Button(onClick = {
                         viewModel.finalizarVisita(orden.id, formulario.diagnostico, formulario.actividad, formulario.materiales)
-                    }) { Text("Finalizar visita") }
+                    }, modifier = Modifier.fillMaxWidth()) { Text("Finalizar visita") }
                 }
             }
         }
@@ -629,10 +763,10 @@ private fun DetalleOrden(
                 "Observación si no estás conforme", errorObservacion) }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { viewModel.aprobar(orden.id) }) { Text("Aprobar") }
+                    Button(onClick = { viewModel.aprobar(orden.id) }, modifier = Modifier.fillMaxWidth()) { Text("Aprobar") }
                     OutlinedButton(onClick = {
                         viewModel.observar(orden.id, formulario.observacion)
-                    }) { Text("Observar") }
+                    }, modifier = Modifier.fillMaxWidth()) { Text("Observar") }
                 }
             }
         }
@@ -643,7 +777,7 @@ private fun DetalleOrden(
                 errorRespuesta, minLines = 2) }
             item { Button(onClick = {
                 viewModel.responderObservacion(orden.id, formulario.respuesta)
-            }) { Text("Enviar respuesta") } }
+            }, modifier = Modifier.fillMaxWidth()) { Text("Enviar respuesta") } }
         }
         // Opción para eliminar la OT (disponible para el Planificador)
         if (perfil == Perfil.PLANIFICADOR) {
