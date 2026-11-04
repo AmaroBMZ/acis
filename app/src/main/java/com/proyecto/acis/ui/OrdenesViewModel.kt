@@ -30,7 +30,7 @@ class OrdenesViewModel(application: Application) : AndroidViewModel(application)
     var perfil by mutableStateOf(Perfil.PLANIFICADOR)
         private set
 
-    // Estado con los datos ingresados en el formulario de creación
+    // Estado con los datos ingresados en el formulario de creación o edición
     var datosCrear by mutableStateOf(DatosCrearOt())
         private set
 
@@ -101,7 +101,7 @@ class OrdenesViewModel(application: Application) : AndroidViewModel(application)
     // Cambia el perfil activo
     fun seleccionarPerfil(nuevo: Perfil) { perfil = nuevo }
 
-    // Actualiza campos individuales del formulario de creación
+    // Actualiza campos individuales del formulario de creación/edición
     fun cambiarLocal(valor: String) { datosCrear = datosCrear.copy(local = valor) }
     fun cambiarEquipo(valor: String) { datosCrear = datosCrear.copy(equipo = valor) }
     fun cambiarDescripcion(valor: String) { datosCrear = datosCrear.copy(descripcion = valor) }
@@ -110,7 +110,40 @@ class OrdenesViewModel(application: Application) : AndroidViewModel(application)
     fun cambiarFecha(valor: String) { datosCrear = datosCrear.copy(fecha = valor) }
     fun cambiarHora(valor: String) { datosCrear = datosCrear.copy(hora = valor) }
 
-    // Intenta crear y guardar una nueva Orden de Trabajo
+    // Carga los datos de una OT existente en el formulario para su edición (CRUD - Update)
+    fun cargarParaEditar(orden: OrdenTrabajo) {
+        val partesFecha = orden.fechaProgramada.split(" ")
+        datosCrear = DatosCrearOt(
+            local = orden.local,
+            equipo = orden.equipo,
+            descripcion = orden.descripcion,
+            tipo = orden.tipo,
+            prioridad = orden.prioridad,
+            fecha = partesFecha.getOrNull(0).orEmpty(),
+            hora = partesFecha.getOrNull(1).orEmpty(),
+        )
+        mostrarErroresCrear = false
+    }
+
+    // Actualiza los datos de una OT existente (CRUD - Update)
+    fun actualizarOt(id: String): Boolean {
+        mostrarErroresCrear = true
+        val datos = datosCrear
+        if (ValidadorOt.crear(datos).hayErrores) return false
+        val tipo = datos.tipo ?: return false
+        val prioridad = datos.prioridad ?: return false
+        val actualizado = repository.actualizarDatos(
+            id, datos.local, datos.equipo, datos.descripcion,
+            "${datos.fecha} ${datos.hora}", tipo, prioridad,
+        )
+        if (actualizado) {
+            datosCrear = DatosCrearOt()
+            mostrarErroresCrear = false
+        }
+        return actualizado
+    }
+
+    // Intenta crear y guardar una nueva Orden de Trabajo (CRUD - Create)
     fun crear(): String? {
         mostrarErroresCrear = true
         errorGuardarCrear = false
@@ -162,7 +195,7 @@ class OrdenesViewModel(application: Application) : AndroidViewModel(application)
 
     fun aprobar(id: String) = repository.aprobar(id)
 
-    // Elimina la orden de trabajo seleccionada
+    // Elimina la orden de trabajo seleccionada (CRUD - Delete)
     fun borrar(id: String): Boolean {
         val borrado = repository.borrar(id)
         mensajeDetalle = id to if (borrado) "Orden eliminada." else "No se pudo eliminar la orden."

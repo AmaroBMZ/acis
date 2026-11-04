@@ -21,9 +21,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -90,6 +92,7 @@ import com.proyecto.acis.data.Perfil
 import com.proyecto.acis.data.PrioridadOt
 import com.proyecto.acis.data.TipoOt
 import com.proyecto.acis.data.obtenerUbicacionCheckIn
+import com.proyecto.acis.ui.components.SuccessToast
 import java.io.File
 import java.util.Calendar
 import java.util.Locale
@@ -100,9 +103,11 @@ import kotlinx.coroutines.launch
 private object RutasAcis {
     const val ORDENES = "ordenes"
     const val CREAR = "crear"
+    const val EDITAR = "editar/{ordenId}"
     const val DETALLE = "detalle/{ordenId}"
 
     fun detalle(ordenId: String) = "detalle/$ordenId"
+    fun editar(ordenId: String) = "editar/$ordenId"
 }
 
 /**
@@ -142,7 +147,7 @@ fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
                 .padding(paddingValues)
                 .fillMaxSize(),
         ) {
-            // Navegador entre la lista de OTs, creación de nueva OT y vista de detalle
+            // Navegador entre la lista de OTs, creación, edición y detalle
             NavHost(
                 navController = navController,
                 startDestination = RutasAcis.ORDENES,
@@ -183,7 +188,7 @@ fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
                         )
                     }
                 }
-                // Pantalla de formulario para crear OT
+                // Pantalla de formulario para crear OT (CRUD - Create)
                 composable(RutasAcis.CREAR) {
                     CrearOrden(
                         viewModel = viewModel,
@@ -199,7 +204,22 @@ fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
                         },
                     )
                 }
-                // Pantalla de detalle e intervención de la OT
+                // Pantalla de edición de OT (CRUD - Update)
+                composable(
+                    route = RutasAcis.EDITAR,
+                    arguments = listOf(navArgument("ordenId") { type = NavType.StringType }),
+                ) { entrada ->
+                    val ordenId = entrada.arguments?.getString("ordenId")
+                    val orden = ordenes.firstOrNull { it.id == ordenId }
+                    if (orden != null) {
+                        EditarOrden(
+                            orden = orden,
+                            viewModel = viewModel,
+                            onVolver = { navController.popBackStack() },
+                        )
+                    }
+                }
+                // Pantalla de detalle e intervención de la OT (CRUD - Read / Actions)
                 composable(
                     route = RutasAcis.DETALLE,
                     arguments = listOf(navArgument("ordenId") { type = NavType.StringType }),
@@ -212,6 +232,7 @@ fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
                             perfil = perfil,
                             viewModel = viewModel,
                             onVolver = { navController.popBackStack() },
+                            onEditar = { navController.navigate(RutasAcis.editar(orden.id)) },
                         )
                     }
                 }
@@ -225,7 +246,7 @@ fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
  * 1. Encabezado con Avatar e Identidad de la aplicación ("ACIS · Servicios Técnicos").
  * 2. Tarjeta contenedora de selección de Perfil.
  * 3. Tarjeta destacada de Orden de Trabajo Reciente.
- * 4. Listado completo de "Todas las Órdenes de Trabajo".
+ * 4. Listado completo de "Todas las Órdenes de Trabajo" estilizado en bloques verticales.
  */
 @Composable
 private fun ListaOrdenesAdaptada(
@@ -417,8 +438,15 @@ private fun ListaOrdenesAdaptada(
             }
         }
 
-        // Listado de cada una de las órdenes
+        // Listado vertical de cada una de las órdenes (estilo bloques "Mis asignaturas")
         items(ordenes, key = { it.id }) { orden ->
+            val colorIndicador = when (orden.prioridad) {
+                PrioridadOt.ALTA -> MaterialTheme.colorScheme.primary
+                PrioridadOt.MEDIA -> MaterialTheme.colorScheme.tertiary
+                PrioridadOt.BAJA -> MaterialTheme.colorScheme.secondary
+                PrioridadOt.SIN_ESPECIFICAR -> MaterialTheme.colorScheme.surfaceVariant
+            }
+
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -427,46 +455,74 @@ private fun ListaOrdenesAdaptada(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min),
+                ) {
+                    // Franja vertical de color a la izquierda estilo bloque de asignatura (|)
+                    Surface(
+                        modifier = Modifier
+                            .width(6.dp)
+                            .fillMaxHeight(),
+                        color = colorIndicador,
+                    ) {}
+
+                    Column(
+                        modifier = Modifier
+                            .padding(16.dp)
+                            .fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "│ ",
+                                    color = colorIndicador,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Text(
+                                    text = orden.id,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                            EstadoBadge(orden.estado)
+                        }
                         Text(
-                            orden.id,
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
+                            text = orden.local,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                         )
-                        EstadoBadge(orden.estado)
-                    }
-                    Text(
-                        orden.local,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        orden.equipo,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
                         Text(
-                            orden.tipo.etiqueta,
+                            text = orden.equipo,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = orden.tipo.etiqueta,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            PrioridadBadge(orden.prioridad)
+                        }
+                        Text(
+                            text = "Programado: ${orden.fechaProgramada}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        PrioridadBadge(orden.prioridad)
                     }
-                    Text(
-                        "Programado: ${orden.fechaProgramada}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                 }
             }
         }
@@ -585,6 +641,131 @@ private fun CrearOrden(
 }
 
 /**
+ * Formulario para editar una Orden de Trabajo existente (CRUD - Update).
+ * Basado en la arquitectura de EdicionScreen del repositorio EjemploEv1.
+ */
+@Composable
+private fun EditarOrden(
+    orden: OrdenTrabajo,
+    viewModel: OrdenesViewModel,
+    onVolver: () -> Unit,
+) {
+    val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val ahora = remember { Calendar.getInstance() }
+
+    remember(orden.id) {
+        viewModel.cargarParaEditar(orden)
+        true
+    }
+
+    val datos = viewModel.datosCrear
+    val errores = viewModel.erroresCrear
+    var dia by rememberSaveable { mutableStateOf(ahora.get(Calendar.DAY_OF_MONTH)) }
+    var mes by rememberSaveable { mutableStateOf(ahora.get(Calendar.MONTH)) }
+    var anio by rememberSaveable { mutableStateOf(ahora.get(Calendar.YEAR)) }
+    var hora by rememberSaveable { mutableStateOf(ahora.get(Calendar.HOUR_OF_DAY)) }
+    var minuto by rememberSaveable { mutableStateOf(ahora.get(Calendar.MINUTE)) }
+    var toastExito by rememberSaveable { mutableStateOf(false) }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().imePadding(),
+            contentPadding = PaddingValues(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item { TextButton(onClick = onVolver) { Text("← Volver") } }
+            item { Text("Editar Orden de Trabajo (${orden.id})", style = MaterialTheme.typography.headlineSmall) }
+            item { CampoFormulario(datos.local, viewModel::cambiarLocal, "Local", errores.local) }
+            item { CampoFormulario(datos.equipo, viewModel::cambiarEquipo, "Equipo", errores.equipo) }
+            item { CampoFormulario(datos.descripcion, viewModel::cambiarDescripcion,
+                "Descripción del trabajo", errores.descripcion, minLines = 3) }
+            item { Text("Tipo de trabajo", style = MaterialTheme.typography.titleMedium) }
+            item {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                ) {
+                    TipoOt.entries.filter { it != TipoOt.SIN_ESPECIFICAR }.forEach { tipo ->
+                        FilterChip(selected = datos.tipo == tipo,
+                            onClick = { viewModel.cambiarTipo(tipo) }, label = { Text(tipo.etiqueta) })
+                    }
+                }
+            }
+            if (errores.tipo != null) item { ErrorSeleccion(errores.tipo) }
+            item { Text("Prioridad", style = MaterialTheme.typography.titleMedium) }
+            item {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                ) {
+                    PrioridadOt.entries.filter { it != PrioridadOt.SIN_ESPECIFICAR }.forEach { prioridad ->
+                        FilterChip(selected = datos.prioridad == prioridad,
+                            onClick = { viewModel.cambiarPrioridad(prioridad) }, label = { Text(prioridad.etiqueta) })
+                    }
+                }
+            }
+            if (errores.prioridad != null) item { ErrorSeleccion(errores.prioridad) }
+            item { Text("Fecha y hora programada", style = MaterialTheme.typography.titleMedium) }
+            item {
+                OutlinedButton(
+                    onClick = {
+                        focusManager.clearFocus()
+                        keyboardController?.hide()
+                        DatePickerDialog(context, { _, nuevoAnio, nuevoMes, nuevoDia ->
+                            anio = nuevoAnio
+                            mes = nuevoMes
+                            dia = nuevoDia
+                            viewModel.cambiarFecha(String.format(
+                                Locale.forLanguageTag("es-CL"), "%02d/%02d/%04d", dia, mes + 1, anio,
+                            ))
+                        }, anio, mes, dia).show()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (datos.fecha.isNotBlank()) "Fecha: ${datos.fecha}" else "Seleccionar fecha") }
+            }
+            if (errores.fecha != null) item { ErrorSeleccion(errores.fecha) }
+            item {
+                OutlinedButton(
+                    onClick = {
+                        focusManager.clearFocus()
+                        keyboardController?.hide()
+                        TimePickerDialog(context, { _, nuevaHora, nuevoMinuto ->
+                            hora = nuevaHora
+                            minuto = nuevoMinuto
+                            viewModel.cambiarHora(String.format(
+                                Locale.forLanguageTag("es-CL"), "%02d:%02d", hora, minuto,
+                            ))
+                        }, hora, minuto, true).show()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (datos.hora.isNotBlank()) "Hora: ${datos.hora}" else "Seleccionar hora") }
+            }
+            if (errores.hora != null) item { ErrorSeleccion(errores.hora) }
+            item {
+                Button(
+                    onClick = {
+                        focusManager.clearFocus()
+                        keyboardController?.hide()
+                        if (viewModel.actualizarOt(orden.id)) {
+                            toastExito = true
+                            onVolver()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Actualizar OT") }
+            }
+        }
+
+        SuccessToast(
+            show = toastExito,
+            message = "Orden de Trabajo actualizada con éxito",
+        )
+    }
+}
+
+/**
  * Pantalla de detalle e intervención técnica de una Orden de Trabajo.
  * Permite realizar check-in con ubicación, capturar foto de evidencia,
  * completar el informe, revisar observaciones, dar conformidad y eliminar la orden.
@@ -595,6 +776,7 @@ private fun DetalleOrden(
     perfil: Perfil,
     viewModel: OrdenesViewModel,
     onVolver: () -> Unit,
+    onEditar: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scopeUbicacion = rememberCoroutineScope()
@@ -686,9 +868,16 @@ private fun DetalleOrden(
                 }
             }
         }
-        // Asignación por el Planificador
-        if (perfil == Perfil.PLANIFICADOR && orden.estado == EstadoOt.CREADA) {
-            item { Button(onClick = { viewModel.asignar(orden.id) }, modifier = Modifier.fillMaxWidth()) { Text("Asignar a técnico demo") } }
+        // Asignación y edición por el Planificador (CRUD - Update)
+        if (perfil == Perfil.PLANIFICADOR) {
+            if (orden.estado == EstadoOt.CREADA) {
+                item { Button(onClick = { viewModel.asignar(orden.id) }, modifier = Modifier.fillMaxWidth()) { Text("Asignar a técnico demo") } }
+            }
+            item {
+                OutlinedButton(onClick = onEditar, modifier = Modifier.fillMaxWidth()) {
+                    Text("Editar datos de esta OT")
+                }
+            }
         }
         // Aceptación por el Técnico
         if (perfil == Perfil.TECNICO && orden.estado == EstadoOt.ASIGNADA) {
@@ -779,7 +968,7 @@ private fun DetalleOrden(
                 viewModel.responderObservacion(orden.id, formulario.respuesta)
             }, modifier = Modifier.fillMaxWidth()) { Text("Enviar respuesta") } }
         }
-        // Opción para eliminar la OT (disponible para el Planificador)
+        // Opción para eliminar la OT (disponible para el Planificador - CRUD Delete)
         if (perfil == Perfil.PLANIFICADOR) {
             item {
                 var mostrarConfirmacion by rememberSaveable(orden.id) { mutableStateOf(false) }

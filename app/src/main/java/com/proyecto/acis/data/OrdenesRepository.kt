@@ -48,6 +48,31 @@ class OrdenesRepository(context: Context) {
         return id
     }
 
+    // Actualiza los datos principales de una Orden de Trabajo existente (CRUD - Update)
+    fun actualizarDatos(
+        id: String,
+        local: String,
+        equipo: String,
+        descripcion: String,
+        fecha: String,
+        tipo: TipoOt,
+        prioridad: PrioridadOt,
+    ): Boolean {
+        val actual = _ordenes.value.firstOrNull { it.id == id } ?: return false
+        val nueva = actual.copy(
+            local = local.trim(),
+            equipo = equipo.trim(),
+            descripcion = descripcion.trim(),
+            fechaProgramada = fecha.trim(),
+            tipo = tipo,
+            prioridad = prioridad,
+            ultimaActualizacion = siguienteMarca(),
+        )
+        if (!database.actualizar(nueva, actual.estado)) return false
+        _ordenes.value = _ordenes.value.map { if (it.id == id) nueva else it }
+        return true
+    }
+
     // Asigna la OT al técnico de demostración
     fun asignar(id: String): Boolean = cambiar(id, EstadoOt.CREADA) {
         it.copy(estado = EstadoOt.ASIGNADA, tecnico = TECNICO_DEMO)
@@ -114,7 +139,7 @@ class OrdenesRepository(context: Context) {
         it.copy(estado = EstadoOt.CERRADA, fechaConformidad = ahora())
     }
 
-    // Elimina una Orden de Trabajo, borrando su archivo de foto y su registro en SQLite
+    // Elimina una Orden de Trabajo, borrando su archivo de foto y su registro en SQLite (CRUD - Delete)
     fun borrar(id: String): Boolean {
         val actual = _ordenes.value.firstOrNull { it.id == id } ?: return false
         if (actual.fotoEvidencia.isNotBlank()) {
