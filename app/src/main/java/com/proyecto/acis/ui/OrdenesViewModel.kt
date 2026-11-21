@@ -31,6 +31,17 @@ class OrdenesViewModel(application: Application) : AndroidViewModel(application)
     // Repositorio que maneja la persistencia de las OTs
     private val repository = OrdenesRepository(application)
     val ordenes = repository.ordenes
+    val usuarios = repository.usuarios
+    val clientesActivos get() = usuarios.value.filter { it.activo && it.perfil == Perfil.CLIENTE }
+
+    fun actualizarAcceso(correo: String, perfil: Perfil, activo: Boolean, onResultado: (Boolean) -> Unit) = ejecutar {
+        val actor = usuario
+        val destino = usuarios.value.firstOrNull { it.correo == correo }
+        val permitido = com.proyecto.acis.domain.PermisosUsuarios.puedeModificar(actor, destino, perfil, activo)
+        val guardado = permitido && repository.actualizarAcceso(actor!!.correo, correo, perfil, activo)
+        if (!guardado) errorGeneral = "No se pudo modificar el acceso. No puedes desactivar ni quitar tu propio rol administrador."
+        onResultado(guardado)
+    }
 
     // El perfil procede de la cuenta autenticada.
     val perfil: Perfil get() = usuario?.perfil ?: Perfil.PLANIFICADOR
@@ -88,7 +99,7 @@ class OrdenesViewModel(application: Application) : AndroidViewModel(application)
 
     // Obtiene los errores de validación del formulario de creación
     val erroresCrear: ErroresCrearOt
-        get() = if (mostrarErroresCrear) ValidadorOt.crear(datosCrear) else ErroresCrearOt()
+        get() = if (mostrarErroresCrear) ValidadorOt.crear(datosCrear, clientesActivos.map { it.correo }) else ErroresCrearOt()
 
     // Obtiene errores de validación del informe técnico
     fun erroresInforme(id: String, diagnostico: String, actividad: String): ErroresInforme =
@@ -137,7 +148,7 @@ class OrdenesViewModel(application: Application) : AndroidViewModel(application)
     private suspend fun actualizarOtInterno(id: String): Boolean {
         mostrarErroresCrear = true
         val datos = datosCrear
-        if (ValidadorOt.crear(datos).hayErrores) return false
+        if (ValidadorOt.crear(datos, clientesActivos.map { it.correo }).hayErrores) return false
         val tipo = datos.tipo ?: return false
         val prioridad = datos.prioridad ?: return false
         val actualizado = repository.actualizarDatos(
@@ -156,7 +167,7 @@ class OrdenesViewModel(application: Application) : AndroidViewModel(application)
         mostrarErroresCrear = true
         errorGuardarCrear = false
         val datos = datosCrear
-        if (ValidadorOt.crear(datos).hayErrores) return null
+        if (ValidadorOt.crear(datos, clientesActivos.map { it.correo }).hayErrores) return null
         val tipo = datos.tipo ?: return null
         val prioridad = datos.prioridad ?: return null
         val id = repository.crear(
@@ -220,41 +231,44 @@ class OrdenesViewModel(application: Application) : AndroidViewModel(application)
     }
 
     // Valida y finaliza la visita técnica
-    private suspend fun finalizarVisitaInterno(id: String, diagnostico: String, actividad: String, materiales: String) {
+    private suspend fun finalizarVisitaInterno(id: String, diagnostico: String, actividad: String, materiales: String): Boolean {
         ordenInformeConErrores = id
         if (ValidadorOt.informe(diagnostico, actividad).hayErrores) {
             mensajeDetalle = null
-            return
+            return false
         }
         val guardado = repository.enviarInforme(id, diagnostico, actividad, materiales)
         mensajeDetalle = id to if (guardado) "Informe disponible para revisión en este dispositivo."
         else "No se pudo finalizar la visita."
         if (guardado) ordenInformeConErrores = null
+        return guardado
     }
 
     // Registra una observación formulada por el cliente
-    private suspend fun observarInterno(id: String, observacion: String) {
+    private suspend fun observarInterno(id: String, observacion: String): Boolean {
         ordenObservacionConError = id
         if (ValidadorOt.observacion(observacion) != null) {
             mensajeDetalle = null
-            return
+            return false
         }
         val guardado = repository.observar(id, observacion)
         mensajeDetalle = id to if (guardado) "Observación registrada." else "No se pudo registrar la observación."
         if (guardado) ordenObservacionConError = null
+        return guardado
     }
 
     // Envía la respuesta técnica a una observación del cliente
-    private suspend fun responderObservacionInterno(id: String, respuesta: String) {
+    private suspend fun responderObservacionInterno(id: String, respuesta: String): Boolean {
         ordenRespuestaConError = id
         if (ValidadorOt.respuesta(respuesta) != null) {
             mensajeDetalle = null
-            return
+            return false
         }
         val guardado = repository.responderObservacion(id, respuesta)
         mensajeDetalle = id to if (guardado) "Respuesta registrada; el cliente puede revisar nuevamente."
         else "No se pudo enviar la respuesta."
         if (guardado) ordenRespuestaConError = null
+        return guardado
     }
     // Estado de sesión observable; private set permite leer desde la UI, pero escribir solo aquí.
     var usuario by mutableStateOf<Usuario?>(null)
@@ -352,7 +366,14 @@ class OrdenesViewModel(application: Application) : AndroidViewModel(application)
     }
     // Las acciones públicas repiten la autorización aunque la UI ya oculte botones por perfil.
     fun asignar(id: String) = ejecutar {
-        if (autorizado(id, Perfil.PLANIFICADOR) && !asignarInterno(id)) errorGeneral = "No se pudo asignar la orden."
+        // La asignación actual usa un técnico fijo; no asignar a una cuenta desactivada o con otro rol.
+        if (autorizado(id, Perfil.PLANIFICADOR)) {
+            val tecnicoDisponible = usuarios.value.any {
+                it.activo && it.perfil == Perfil.TECNICO && it.nombre == OrdenesRepository.TECNICO_DEMO
+            }
+            if (!tecnicoDisponible) errorGeneral = "El técnico demo no tiene una cuenta técnica activa."
+            else if (!asignarInterno(id)) errorGeneral = "No se pudo asignar la orden."
+        }
     }
     fun aceptar(id: String) = ejecutar {
         if (autorizado(id, Perfil.TECNICO) && !aceptarInterno(id)) errorGeneral = "No se pudo aceptar la orden."
@@ -360,8 +381,10 @@ class OrdenesViewModel(application: Application) : AndroidViewModel(application)
     fun iniciarVisita(id: String, ubicacion: String?) = ejecutar {
         if (autorizado(id, Perfil.TECNICO)) iniciarVisitaInterno(id, ubicacion)
     }
-    fun aprobar(id: String) = ejecutar {
-        if (autorizado(id, Perfil.CLIENTE) && !aprobarInterno(id)) errorGeneral = "No se pudo aprobar la orden."
+    fun aprobar(id: String, onResultado: (Boolean) -> Unit = {}) = ejecutar {
+        val ok = autorizado(id, Perfil.CLIENTE) && aprobarInterno(id)
+        if (!ok) errorGeneral = "No se pudo aprobar la orden."
+        onResultado(ok)
     }
     fun guardarBorrador(id: String, diagnostico: String, actividad: String, materiales: String) = ejecutar {
         if (autorizado(id, Perfil.TECNICO)) guardarBorradorInterno(id, diagnostico, actividad, materiales)
@@ -369,13 +392,13 @@ class OrdenesViewModel(application: Application) : AndroidViewModel(application)
     fun guardarFoto(id: String, nombre: String, onResultado: (Boolean) -> Unit) = ejecutar {
         onResultado(autorizado(id, Perfil.TECNICO) && guardarFotoInterno(id, nombre))
     }
-    fun finalizarVisita(id: String, diagnostico: String, actividad: String, materiales: String) = ejecutar {
-        if (autorizado(id, Perfil.TECNICO)) finalizarVisitaInterno(id, diagnostico, actividad, materiales)
+    fun finalizarVisita(id: String, diagnostico: String, actividad: String, materiales: String, onResultado: (Boolean) -> Unit = {}) = ejecutar {
+        onResultado(autorizado(id, Perfil.TECNICO) && finalizarVisitaInterno(id, diagnostico, actividad, materiales))
     }
-    fun observar(id: String, observacion: String) = ejecutar {
-        if (autorizado(id, Perfil.CLIENTE)) observarInterno(id, observacion)
+    fun observar(id: String, observacion: String, onResultado: (Boolean) -> Unit = {}) = ejecutar {
+        onResultado(autorizado(id, Perfil.CLIENTE) && observarInterno(id, observacion))
     }
-    fun responderObservacion(id: String, respuesta: String) = ejecutar {
-        if (autorizado(id, Perfil.TECNICO)) responderObservacionInterno(id, respuesta)
+    fun responderObservacion(id: String, respuesta: String, onResultado: (Boolean) -> Unit = {}) = ejecutar {
+        onResultado(autorizado(id, Perfil.TECNICO) && responderObservacionInterno(id, respuesta))
     }
 }

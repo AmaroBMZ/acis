@@ -6,7 +6,7 @@ import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 
 // Identidad de la sesión; no incluye la contraseña ni el hash almacenado en SQLite.
-data class Usuario(val correo: String, val nombre: String, val perfil: Perfil)
+data class Usuario(val correo: String, val nombre: String, val perfil: Perfil, val activo: Boolean = true)
 
 /** Cuentas locales para la evaluación. No constituyen autenticación contra un servidor. */
 object CuentasPrueba {
@@ -16,6 +16,7 @@ object CuentasPrueba {
         Usuario("tecnico@acis.cl", "Técnico demo", Perfil.TECNICO),
         Usuario(CLIENTE, "Cliente demo", Perfil.CLIENTE),
         Usuario("cliente2@acis.cl", "Segundo cliente demo", Perfil.CLIENTE),
+        Usuario("admin@acis.cl", "Administrador demo", Perfil.ADMINISTRADOR),
     )
     const val CLAVE = "Acis2026!"
 }

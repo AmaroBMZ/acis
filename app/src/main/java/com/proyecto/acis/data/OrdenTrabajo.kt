@@ -4,6 +4,7 @@ package com.proyecto.acis.data
  * Perfiles de usuario disponibles en la demostración local de ACIS.
  */
 enum class Perfil(val etiqueta: String) {
+    ADMINISTRADOR("Administrador"),
     PLANIFICADOR("Planificador"),
     TECNICO("Técnico"),
     CLIENTE("Cliente"),

@@ -14,7 +14,11 @@ Esta aplicación reemplaza los registros en papel y mensajería por una solució
 
 ##  Funcionalidades Principales
 
-La aplicación permite recorrer el ciclo completo de una Orden de Trabajo mediante cuentas locales con roles de planificador, técnico y cliente:
+La aplicación ofrece cuatro roles locales: administrador, planificador, técnico y cliente. Los tres últimos participan del ciclo de una Orden de Trabajo.
+
+### Administración de cuentas
+
+El administrador consulta las cuentas, cambia sus roles y las activa o desactiva. No administra órdenes y no puede desactivar su propia cuenta ni quitarse el rol administrador. Los cambios se guardan en SQLite y se aplican al siguiente inicio de sesión de la cuenta modificada. El registro de cuentas nuevas y la gestión de acceso mediante backend siguen pendientes.
 
 ### 1. Perfil Planificador
 - **Creación de OTs**: Formulario para registrar cliente, local, equipo, descripción del trabajo, tipo (preventiva/correctiva), prioridad y fecha/hora programada. Después del primer intento de guardar, los errores se actualizan al editar los campos.
@@ -69,7 +73,8 @@ com.proyecto.acis/
 │   ├── OrdenesViewModel.kt      # ViewModel con manejo de estado y filtros por perfil
 │   ├── LoginScreen.kt            # Formulario de inicio de sesión
 │   ├── components/SuccessToast.kt # Aviso visual de confirmación
-│   └── AcisApp.kt               # Interfaz de usuario Compose (Scaffold, TopAppBar, FAB, Cards)
+│   ├── navigation/              # AcisApp y rutas; barra fija con Volver y Salir
+│   └── screens/ordenes/          # Lista, creación, edición y detalle en archivos separados
 └── MainActivity.kt              # Punto de entrada de la aplicación
 ```
 
@@ -91,6 +96,7 @@ Rama: `mejoras/login-persistencia-pruebas`. Ejecutar **debug** instala `com.proy
 
 | Rol | Correo | Contraseña |
 | --- | --- | --- |
+| Administrador | admin@acis.cl | Acis2026! |
 | Planificador | planificador@acis.cl | Acis2026! |
 | Técnico | tecnico@acis.cl | Acis2026! |
 | Cliente | cliente@acis.cl | Acis2026! |
@@ -117,7 +123,7 @@ Orden recomendado de lectura:
 3. `data/OrdenesDb.kt`: cómo se crean las tablas y cómo se convierten filas SQL en objetos Kotlin.
 4. `data/OrdenesRepository.kt`: cómo se guardan cambios, se controlan las transiciones de estado y se publica la lista actualizada.
 5. `ui/OrdenesViewModel.kt`: cómo se conectan sesión, formularios, validaciones y operaciones del repositorio.
-6. `MainActivity.kt`, `ui/LoginScreen.kt` y `ui/AcisApp.kt`: cómo arranca la aplicación y cómo las pantallas muestran el estado y envían acciones.
+6. `MainActivity.kt`, `ui/LoginScreen.kt`, `ui/navigation/` y `ui/screens/ordenes/`: cómo arranca la aplicación, cómo se conectan los destinos y cómo las pantallas envían acciones.
 7. `ui/theme/` y `ui/components/`: colores, tipografía y componentes visuales compartidos.
 
 ### Recorrido de una acción: guardar una OT
@@ -132,7 +138,9 @@ CrearOrden (pantalla)
   -> collectAsState permite que Compose actualice la pantalla
 ```
 
-La pantalla recibe el ID mediante `onResultado` y navega al detalle solo si se creó la orden. Una validación fallida muestra errores; un fallo de persistencia no añade la orden a la lista en memoria.
+La pantalla recibe el ID mediante `onResultado` y vuelve a la lista solo si se creó la orden. Una validación fallida muestra errores; un fallo de persistencia no añade la orden a la lista en memoria.
+
+La barra superior mantiene **Volver** y **Salir** fuera del contenido desplazable. Actualizar una OT vuelve al detalle; crear, finalizar una visita, aprobar, observar o responder regresa a la pantalla anterior tras confirmar el guardado. Guardar borrador, tomar una foto e iniciar la visita permiten continuar trabajando en el detalle.
 
 Como analogía, la pantalla es el mostrador, el ViewModel coordina la solicitud, el validador revisa sus requisitos y el repositorio gestiona el archivo de órdenes. En el negocio, esta distribución permite cambiar la presentación sin escribir consultas SQL dentro de cada botón.
 
@@ -168,11 +176,11 @@ El planificador puede crear, editar y eliminar órdenes. La implementación actu
 
 ## Persistencia, formularios y recursos del dispositivo
 
-- **SQLite versión 5:** `acis_ordenes.db` contiene `ordenes`, `usuarios` y `configuracion`. Las migraciones agregan columnas y conservan registros existentes. No se utiliza Room.
+- **SQLite versión 6:** `acis_ordenes.db` contiene `ordenes`, `usuarios` y `configuracion`. La migración desde v5 agrega activación de cuentas y el administrador demo, conservando órdenes y contraseñas anteriores. No se utiliza Room.
 - **Inicialización:** si corresponde, se importan órdenes antiguas desde SharedPreferences o se insertan siete ejemplos. La marca `inicializada` evita recrearlos después de borrar todas las órdenes.
 - **Contraseñas:** se almacena una sal aleatoria y un hash derivado con PBKDF2, 120 000 iteraciones y 256 bits. Las cuentas y la clave de demostración están publicadas en el proyecto; no hay registro de usuarios ni autenticación remota.
 - **Sesión:** el usuario autenticado vive en el ViewModel. No se implementa un inicio de sesión persistente tras terminar el proceso. Salir limpia los borradores en memoria, pero conserva las órdenes guardadas.
-- **Validación:** crear/editar exige local, equipo, descripción, tipo, prioridad, fecha real `dd/MM/yyyy`, hora `HH:mm` y una cuenta cliente válida. No se exige que la fecha sea futura. Los errores de creación se activan después del intento de guardar y se recalculan al editar.
+- **Validación:** crear/editar exige local, equipo, descripción, tipo, prioridad, fecha real `dd/MM/yyyy`, hora `HH:mm` y una cuenta cliente activa. El selector y la validación usan las cuentas cargadas desde SQLite. No se exige que la fecha sea futura. Los errores de creación se activan después del intento de guardar y se recalculan al editar.
 - **Informe:** diagnóstico y actividad son obligatorios al finalizar; materiales y fotografía son opcionales. Escribir en el formulario no equivale a persistirlo: hay que guardar el borrador o finalizar.
 - **Fotografía:** se conserva una referencia por OT en SQLite y el archivo en `filesDir/evidencias`. `FileProvider` entrega a la cámara una URI para escribir la imagen. Al reemplazar una foto se intenta eliminar la anterior después de guardar la nueva referencia.
 - **Ubicación:** se solicita permiso aproximado, se consulta el proveedor de red y se espera hasta 12 segundos. La falta de permiso o ubicación no bloquea el check-in.
@@ -199,6 +207,7 @@ Desde la raíz, con el JDK y SDK configurados para Gradle:
 | --- | --- |
 | `app/src/test/.../ValidadorOtTest.kt` | Campos obligatorios, fechas reales, horas, cliente e informe. |
 | `app/src/test/.../PermisosOtTest.kt` | Acceso por identidad, ausencia de sesión y separación de roles. |
+| `app/src/test/.../PermisosUsuariosTest.kt` | Privilegios administrativos, cuentas inactivas y protección del propio acceso. |
 | `app/src/test/.../ClavesTest.kt` | Clave correcta/incorrecta y efecto de usar sales diferentes. |
 | `app/src/androidTest/.../PersistenciaTest.kt` | SQLite, reapertura, migración, ciclo de estados y borrado sin regenerar ejemplos. |
 | `app/src/androidTest/.../LoginNavegacionTest.kt` | Login, rechazo de credenciales, cambio de cuenta y búsqueda. |

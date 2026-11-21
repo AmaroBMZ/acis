@@ -56,7 +56,7 @@ data class ErroresInforme(
  */
 object ValidadorOt {
     // Valida que todos los campos del formulario de creación de OT estén completos
-    fun crear(datos: DatosCrearOt) = ErroresCrearOt(
+    fun crear(datos: DatosCrearOt, clientes: List<String> = CuentasPrueba.usuarios.filter { it.perfil == Perfil.CLIENTE }.map { it.correo }) = ErroresCrearOt(
         local = if (datos.local.isBlank()) "Ingresa el local" else null,
         equipo = if (datos.equipo.isBlank()) "Ingresa el equipo" else null,
         descripcion = if (datos.descripcion.isBlank()) "Describe el trabajo" else null,
@@ -64,7 +64,7 @@ object ValidadorOt {
         prioridad = if (datos.prioridad == null || datos.prioridad == PrioridadOt.SIN_ESPECIFICAR) "Selecciona una prioridad" else null,
         fecha = if (!fechaValida(datos.fecha)) "Selecciona una fecha válida (dd/MM/yyyy)" else null,
         hora = if (!Regex("([01][0-9]|2[0-3]):[0-5][0-9]").matches(datos.hora)) "Selecciona una hora válida (HH:mm)" else null,
-        clienteCorreo = if (CuentasPrueba.usuarios.none { it.perfil == Perfil.CLIENTE && it.correo == datos.clienteCorreo }) "Selecciona el cliente" else null,
+        clienteCorreo = if (datos.clienteCorreo !in clientes) "Selecciona un cliente activo" else null,
     )
 
     // Comprueba formato exacto y calendario real; no exige que la fecha esté en el futuro.

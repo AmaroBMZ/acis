@@ -9,7 +9,7 @@ import android.database.sqlite.SQLiteOpenHelper
 /**
  * Gestor de la base de datos SQLite local para el almacenamiento persistente de OTs sin conexión.
  */
-class OrdenesDb(context: Context, nombre: String = "acis_ordenes.db") : SQLiteOpenHelper(context, nombre, null, 5) {
+class OrdenesDb(context: Context, nombre: String = "acis_ordenes.db") : SQLiteOpenHelper(context, nombre, null, 6) {
     // Creación de la tabla principal de órdenes de trabajo
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""
@@ -57,11 +57,21 @@ class OrdenesDb(context: Context, nombre: String = "acis_ordenes.db") : SQLiteOp
             // Una instalación existente no debe recuperar datos demo al quedar vacía.
             db.execSQL("INSERT OR IGNORE INTO configuracion (clave) VALUES ('inicializada')")
         }
+        // v5 ya tiene usuarios. Agrega activación y administrador sin borrar órdenes ni claves.
+        if (oldVersion == 5) {
+            db.execSQL("ALTER TABLE usuarios ADD COLUMN activo INTEGER NOT NULL DEFAULT 1")
+            val admin = CuentasPrueba.usuarios.first { it.perfil == Perfil.ADMINISTRADOR }
+            val sal = Claves.nuevaSal()
+            db.insertWithOnConflict("usuarios", null, ContentValues().apply {
+                put("correo", admin.correo); put("nombre", admin.nombre); put("perfil", admin.perfil.name)
+                put("sal", sal); put("hash", Claves.derivar(CuentasPrueba.CLAVE, sal))
+            }, SQLiteDatabase.CONFLICT_IGNORE)
+        }
     }
 
     // Crea cuentas demo y una tabla de marcas para recordar la inicialización de los datos.
     private fun crearUsuarios(db: SQLiteDatabase) {
-        db.execSQL("CREATE TABLE usuarios (correo TEXT PRIMARY KEY, nombre TEXT NOT NULL, perfil TEXT NOT NULL, sal TEXT NOT NULL, hash TEXT NOT NULL)")
+        db.execSQL("CREATE TABLE usuarios (correo TEXT PRIMARY KEY, nombre TEXT NOT NULL, perfil TEXT NOT NULL, sal TEXT NOT NULL, hash TEXT NOT NULL, activo INTEGER NOT NULL DEFAULT 1)")
         db.execSQL("CREATE TABLE configuracion (clave TEXT PRIMARY KEY)")
         // Cada cuenta obtiene una sal distinta; SQLite guarda sal y hash, no la clave ingresada.
         CuentasPrueba.usuarios.forEach { usuario ->
@@ -75,11 +85,38 @@ class OrdenesDb(context: Context, nombre: String = "acis_ordenes.db") : SQLiteOp
 
     // Normaliza el correo. El parámetro ? separa el valor del usuario de la consulta SQL.
     fun autenticar(correo: String, clave: String): Usuario? = readableDatabase.query(
-        "usuarios", null, "correo = ?", arrayOf(correo.trim().lowercase(java.util.Locale.ROOT)), null, null, null,
+        "usuarios", null, "correo = ? AND activo = 1", arrayOf(correo.trim().lowercase(java.util.Locale.ROOT)), null, null, null,
     // use cierra el cursor al terminar; moveToFirst comprueba si existe una cuenta.
     ).use { cursor ->
         if (!cursor.moveToFirst() || !Claves.verificar(clave, cursor.valor("sal"), cursor.valor("hash"))) null
         else Usuario(cursor.valor("correo"), cursor.valor("nombre"), Perfil.valueOf(cursor.valor("perfil")))
+    }
+
+    // Solo devuelve identidad y permisos; nunca expone las sales ni hashes a la interfaz.
+    fun leerUsuarios(): List<Usuario> = readableDatabase.query(
+        "usuarios", arrayOf("correo", "nombre", "perfil", "activo"), null, null, null, null, "nombre ASC",
+    ).use { cursor -> buildList {
+        while (cursor.moveToNext()) add(Usuario(cursor.valor("correo"), cursor.valor("nombre"),
+            Perfil.valueOf(cursor.valor("perfil")), cursor.getInt(cursor.getColumnIndexOrThrow("activo")) == 1))
+    } }
+
+    // Relee los permisos en SQLite dentro de la transacción: ocultar botones no autoriza escrituras.
+    fun actualizarAcceso(actorCorreo: String, correo: String, perfil: Perfil, activo: Boolean): Boolean {
+        val db = writableDatabase
+        db.beginTransaction()
+        return try {
+            val usuarios = leerUsuarios()
+            val actor = usuarios.firstOrNull { it.correo == actorCorreo }
+            val destino = usuarios.firstOrNull { it.correo == correo }
+            if (!com.proyecto.acis.domain.PermisosUsuarios.puedeModificar(actor, destino, perfil, activo)) false
+            else {
+                val ok = db.update("usuarios", ContentValues().apply {
+                    put("perfil", perfil.name); put("activo", if (activo) 1 else 0)
+                }, "correo = ?", arrayOf(correo)) == 1
+                if (ok) db.setTransactionSuccessful()
+                ok
+            }
+        } finally { db.endTransaction() }
     }
 
     // Consulta una marca persistente: una lista vacía no significa que deban recrearse las demos.

@@ -1,5 +1,33 @@
 # Validación de la rama
 
+## Verificación en teléfono Samsung (21 de noviembre de 2026)
+
+La variante `com.proyecto.acis.pruebas` se actualizó con `adb install -r` en el Samsung SM-S921B con Android 16. Se ejecutaron los 12 casos instrumentados: inicialmente aprobaron 11 y falló el selector de desplazamiento del caso nuevo de navegación.
+
+Se corrigió la prueba para desplazar la LazyColumn por índice, distinguirla de los selectores horizontales y volver a localizar Guardar OT después de que los errores agregaran filas. La repetición individual de ese caso aprobó. Por tanto, los 12 casos tienen resultado satisfactorio entre la ejecución completa y la repetición dirigida; no se hizo otra ejecución completa posterior.
+
+Quedan comprobados por esas pruebas: login/logout, entrada administrativa, permisos de acceso, Volver y Salir visibles al final del formulario, permanencia ante validación fallida, persistencia y migraciones v4/v5. Cámara, ubicación física y todos los cierres tras operaciones exitosas todavía requieren su recorrido manual. Las pruebas SQL utilizaron bases temporales independientes.
+
+## Cuarto rol local (21 de noviembre de 2026)
+
+- Administrador: lista cuentas y modifica rol/activación desde una pantalla propia. No accede a las órdenes ni puede quitarse su propio acceso administrativo.
+- SQLite v6: migración desde v5 para agregar activación y administrador demo; las instalaciones anteriores a v5 crean directamente la tabla de usuarios actualizada.
+- 23 pruebas JVM aprobadas: las 19 anteriores y 4 de permisos administrativos.
+- APK debug y pruebas Android compilados. Se añadieron casos Android de migración v5, conservación de credenciales, activación y entrada a la pantalla administrativa.
+- Las pruebas instrumentadas y la revisión visual siguen pendientes: no hay dispositivo ni emulador conectado. Compilar estos casos no equivale a ejecutarlos.
+- El alcance sigue siendo local. Registro, recuperación, edición de perfil personal, microservicios, API externa y cobertura medida del 80 % siguen pendientes.
+
+## Reorganización y navegación (20 de noviembre de 2026)
+
+Se separaron navegación, pantallas de órdenes y componentes compartidos. La barra superior conserva Volver y Salir al desplazar el contenido. Las confirmaciones de creación, edición, informe y revisión navegan solo después de un guardado correcto.
+
+- Compilación debug y 19 pruebas JVM: correctas.
+- Compilación de pruebas Android: correcta. Se añadió un caso de formulario inválido y navegación visible después de desplazarlo.
+- Android lint: ejecutado correctamente; consultar su reporte para advertencias.
+- No se ejecutaron las pruebas Android de esta etapa: ADB no detectó dispositivos ni emuladores conectados. Sigue pendiente comprobar visualmente los recorridos y las confirmaciones de éxito/error.
+
+En esta etapa de reorganización todavía no se había implementado el cuarto rol; su avance posterior se detalla arriba. El backend, registro, recuperación de contraseña y medición del 80 % de cobertura siguen pendientes.
+
 Comandos desde la raíz, con el JDK de Android Studio:
 
 ```powershell

@@ -20,6 +20,36 @@ class LoginNavegacionTest {
         compose.onNodeWithText("Ingresar").performScrollTo().performClick()
     }
 
+    // Desplazarse al final no debe ocultar las acciones de navegación.
+    // Intentar guardar sin campos completos tampoco debe cerrar el formulario.
+    @Test fun volverPermaneceVisibleYUnFormularioInvalidoNoSeCierra() {
+        entrar("planificador@acis.cl")
+        compose.waitUntil(20_000) { compose.onAllNodesWithText("Salir").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("+").performClick()
+        compose.onNodeWithText("Nueva orden de trabajo").assertExists()
+        // LazyColumn no compone todos los elementos: desplazar el contenedor hasta encontrar el botón.
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Guardar OT"))
+        compose.onNodeWithText("Guardar OT").performClick()
+        compose.waitForIdle()
+        // Los errores agregan filas; volver al final comprueba que sigue en el formulario.
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Guardar OT"))
+        compose.onNodeWithText("Guardar OT").assertExists()
+        compose.onNodeWithText("Volver", substring = false).assertIsDisplayed()
+        compose.onNodeWithText("Salir").assertIsDisplayed()
+        compose.onNodeWithText("Volver", substring = false).performClick()
+        compose.onNodeWithText("+").assertIsDisplayed()
+        compose.onNodeWithText("Guardar OT").assertDoesNotExist()
+    }
+
+    @Test fun administradorAbreCuentasSinAccionesDeOrdenes() {
+        entrar("admin@acis.cl")
+        compose.waitUntil(20_000) { compose.onAllNodesWithText("Administrar cuentas").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Perfil activo: Administrador").assertExists()
+        compose.onNodeWithText("+").assertDoesNotExist()
+        compose.onNodeWithText("Salir").assertIsDisplayed().performClick()
+        compose.onNodeWithText("Ingresa a tu cuenta").assertExists()
+    }
+
     // Comprueba el rechazo inicial y un segundo intento correcto sin reiniciar la pantalla.
     @Test fun credencialesInvalidasNoDanAccesoYSePuedeReintentar() {
         entrar("planificador@acis.cl", "incorrecta")

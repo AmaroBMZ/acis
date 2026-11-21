@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModelProvider
-import com.proyecto.acis.ui.AcisApp
+import com.proyecto.acis.ui.navigation.AcisApp
 import com.proyecto.acis.ui.OrdenesViewModel
 import com.proyecto.acis.ui.theme.AcisTheme
 

@@ -26,6 +26,47 @@ class PersistenciaTest {
     // Cierra y elimina únicamente la base temporal utilizada por esta prueba.
     @After fun limpiar() { db.close(); context.deleteDatabase(nombre) }
 
+    @Test fun accesoAdministrativoSeValidaEnLaBaseYPersiste() = runBlocking {
+        repo.cargar()
+        val admin = "admin@acis.cl"
+        val cliente = CuentasPrueba.CLIENTE
+        assertFalse(db.actualizarAcceso(cliente, admin, Perfil.CLIENTE, false))
+        assertFalse(db.actualizarAcceso(admin, admin, Perfil.ADMINISTRADOR, false))
+        assertTrue(db.actualizarAcceso(admin, cliente, Perfil.CLIENTE, false))
+        assertNull(db.autenticar(cliente, CuentasPrueba.CLAVE))
+        db.close()
+        db = OrdenesDb(context, nombre)
+        assertFalse(db.leerUsuarios().first { it.correo == cliente }.activo)
+        assertTrue(db.actualizarAcceso(admin, cliente, Perfil.CLIENTE, true))
+        assertNotNull(db.autenticar(cliente, CuentasPrueba.CLAVE))
+        assertEquals(7, db.leer().size)
+    }
+
+    @Test fun migracionCincoAgregaAdminSinCambiarClavesNiBorrarDatos() {
+        val ruta = context.getDatabasePath(nombre)
+        ruta.parentFile!!.mkdirs()
+        val sal = Claves.nuevaSal()
+        val hash = Claves.derivar("ClaveAnterior!", sal)
+        SQLiteDatabase.openOrCreateDatabase(ruta, null).use { anterior ->
+            anterior.execSQL("CREATE TABLE usuarios (correo TEXT PRIMARY KEY, nombre TEXT NOT NULL, perfil TEXT NOT NULL, sal TEXT NOT NULL, hash TEXT NOT NULL)")
+            anterior.execSQL("CREATE TABLE ordenes (id TEXT PRIMARY KEY)")
+            anterior.execSQL("INSERT INTO ordenes VALUES ('OT-CONSERVADA')")
+            anterior.execSQL("INSERT INTO usuarios VALUES (?, ?, ?, ?, ?)",
+                arrayOf("antiguo@acis.cl", "Anterior", "CLIENTE", sal, hash))
+            anterior.version = 5
+        }
+        assertNotNull(db.autenticar("antiguo@acis.cl", "ClaveAnterior!"))
+        assertEquals(Perfil.ADMINISTRADOR, db.autenticar("admin@acis.cl", CuentasPrueba.CLAVE)?.perfil)
+        db.readableDatabase.rawQuery("SELECT id FROM ordenes", null).use {
+            assertTrue(it.moveToFirst())
+            assertEquals("OT-CONSERVADA", it.getString(0))
+        }
+        db.readableDatabase.rawQuery("SELECT sal, hash FROM usuarios WHERE correo = 'antiguo@acis.cl'", null).use {
+            assertTrue(it.moveToFirst()); assertEquals(sal, it.getString(0)); assertEquals(hash, it.getString(1))
+        }
+        assertEquals(6, db.readableDatabase.version)
+    }
+
     // Verifica credenciales, consulta parametrizada y conservación de cuentas al reabrir.
     @Test fun cuentasSePersistenYRechazanClaveIncorrecta() = runBlocking {
         repo.cargar()

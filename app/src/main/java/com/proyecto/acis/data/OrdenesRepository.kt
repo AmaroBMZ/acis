@@ -24,9 +24,14 @@ class OrdenesRepository(context: Context, private val database: OrdenesDb = Orde
     // Estado observable privado; asStateFlow expone lectura sin permitir modificaciones externas.
     private val _ordenes = MutableStateFlow<List<OrdenTrabajo>>(emptyList())
     val ordenes = _ordenes.asStateFlow()
+    private val _usuarios = MutableStateFlow<List<Usuario>>(emptyList())
+    val usuarios = _usuarios.asStateFlow()
 
     // Las entradas suspendidas al final de esta clase ejecutan estas operaciones en Dispatchers.IO.
-    private fun cargarInterno() { _ordenes.value = cargarOrdenes() }
+    private fun cargarInterno() {
+        _ordenes.value = cargarOrdenes()
+        _usuarios.value = database.leerUsuarios()
+    }
     private fun autenticarInterno(correo: String, clave: String): Usuario? = database.autenticar(correo, clave)
     // Libera la conexión cuando termina el ViewModel y ya no quedan sus tareas pendientes.
     fun cerrar() = database.close()
@@ -365,6 +370,11 @@ class OrdenesRepository(context: Context, private val database: OrdenesDb = Orde
     }
     // API suspendida del repositorio: todas estas entradas pasan por enIo para serializar el acceso.
     suspend fun cargar() = enIo { cargarInterno() }
+    suspend fun actualizarAcceso(actorCorreo: String, correo: String, perfil: Perfil, activo: Boolean): Boolean = enIo {
+        val guardado = database.actualizarAcceso(actorCorreo, correo, perfil, activo)
+        if (guardado) _usuarios.value = database.leerUsuarios()
+        guardado
+    }
     suspend fun autenticar(correo: String, clave: String) = enIo { autenticarInterno(correo, clave) }
     suspend fun crear(local: String, equipo: String, descripcion: String, fecha: String, tipo: TipoOt, prioridad: PrioridadOt, clienteCorreo: String) =
         enIo { crearInterno(local, equipo, descripcion, fecha, tipo, prioridad, clienteCorreo) }

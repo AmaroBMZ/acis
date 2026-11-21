@@ -20,6 +20,12 @@ Propuesta de criterios para esta rama; no corresponden a una rúbrica entregada 
 | CA-13 | Al abrir crear, editar o detalle y volver | Mantiene una navegación coherente; crear limpia datos previos; una OT inexistente muestra salida de retorno | Revisión de rutas; ejercicio manual |
 | CA-14 | Al denegar ubicación o no obtener señal | Permite check-in sin ubicación; no lanza error por falta de permiso | lint y ejercicio manual de permisos |
 | CA-15 | Al eliminar una OT con evidencia | Borra primero el registro y luego el archivo; un fallo SQL no debe destruir previamente la fotografía | Revisión del repositorio; prueba manual con cámara |
+| CA-16 | Al desplazarse al final de un formulario | Volver y Salir siguen visibles en la barra superior | LoginNavegacionTest; recorrido manual |
+| CA-17 | Al crear, editar, finalizar visita, aprobar, observar o responder | Cierra la pantalla correspondiente solo tras guardar; un error mantiene los campos disponibles | LoginNavegacionTest cubre formulario inválido; recorrido manual de confirmaciones |
+| CA-18 | Al entrar como administrador | Abre gestión de cuentas, sin acciones de órdenes; puede modificar acceso de otras cuentas | PermisosUsuariosTest y recorrido manual |
+| CA-19 | Al intentar quitar el propio acceso administrativo | Rechaza el cambio en la lógica y en persistencia | PermisosUsuariosTest y PersistenciaTest |
+| CA-20 | Al desactivar una cuenta y volver a iniciar sesión | Rechaza el login hasta reactivarla; conserva sus órdenes | PersistenciaTest |
+| CA-21 | Al migrar de SQLite v5 a v6 | Conserva registros y claves; agrega administrador y activación | PersistenciaTest |
 
 ## Recorrido manual de evaluación
 

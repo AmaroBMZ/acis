@@ -44,6 +44,7 @@ fun LoginScreen(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
             enabled = viewModel.cargado && !viewModel.ocupado && correo.isNotBlank() && clave.isNotBlank(),
             modifier = Modifier.fillMaxWidth()) { Text("Ingresar") }
         Text("Cuentas de prueba", style = MaterialTheme.typography.titleMedium)
+        Text("admin@acis.cl")
         Text("planificador@acis.cl\ntecnico@acis.cl\ncliente@acis.cl\ncliente2@acis.cl")
         Text("Contraseña de prueba: Acis2026!")
     }

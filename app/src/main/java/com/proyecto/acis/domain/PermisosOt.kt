@@ -5,11 +5,14 @@ import com.proyecto.acis.data.*
 /** La identidad autenticada determina el acceso, no un selector visual de perfiles. */
 object PermisosOt {
     // El planificador ve todo; técnico por nombre asignado y cliente por correo propietario.
-    fun puedeVer(usuario: Usuario?, orden: OrdenTrabajo): Boolean = when (usuario?.perfil) {
+    fun puedeVer(usuario: Usuario?, orden: OrdenTrabajo): Boolean {
+        if (usuario == null || !usuario.activo) return false
+        return when (usuario.perfil) {
         Perfil.PLANIFICADOR -> true
         Perfil.TECNICO -> orden.tecnico == usuario.nombre
         Perfil.CLIENTE -> orden.clienteCorreo == usuario.correo
-        null -> false
+        Perfil.ADMINISTRADOR -> false
+        }
     }
 
     // Exige simultáneamente el rol solicitado y visibilidad. El estado de la OT se controla aparte.
