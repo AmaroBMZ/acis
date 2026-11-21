@@ -1,3 +1,4 @@
+// Repositorios para resolver los plugins de construcción.
 pluginManagement {
     repositories {
         google {
@@ -14,6 +15,7 @@ pluginManagement {
 plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
+// Centraliza repositorios de bibliotecas y rechaza repositorios definidos en módulos.
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
@@ -23,4 +25,5 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "acis"
+// Registra el módulo Android que se compila y ejecuta.
 include(":app")

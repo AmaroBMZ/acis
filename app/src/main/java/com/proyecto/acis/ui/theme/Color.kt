@@ -2,6 +2,8 @@ package com.proyecto.acis.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
+// Los nombres On... indican el color de texto/iconos sobre el fondo correspondiente.
+// Los valores hexadecimales siguen el formato ARGB (opacidad, rojo, verde, azul).
 // Light Colors - Frío Ártico & Cero Grados
 val BluePrimaryLight = Color(0xFF00639B)
 val OnBluePrimaryLight = Color(0xFFFFFFFF)

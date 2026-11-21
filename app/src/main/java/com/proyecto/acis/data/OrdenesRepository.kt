@@ -1,6 +1,10 @@
 package com.proyecto.acis.data
 
 import android.content.Context
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
@@ -13,24 +17,33 @@ import java.util.Locale
  * Repositorio encargado de sincronizar el estado reactivo en memoria (StateFlow)
  * con la base de datos local SQLite y los archivos de fotos de evidencia.
  */
-class OrdenesRepository(context: Context) {
+class OrdenesRepository(context: Context, private val database: OrdenesDb = OrdenesDb(context)) {
+    // Almacén antiguo: se consulta únicamente para importar órdenes de versiones previas.
     private val preferences = context.getSharedPreferences("acis_ordenes_locales", Context.MODE_PRIVATE)
-    private val database = OrdenesDb(context)
     private val fotos = File(context.filesDir, "evidencias")
-    private val _ordenes = MutableStateFlow(cargarOrdenes())
+    // Estado observable privado; asStateFlow expone lectura sin permitir modificaciones externas.
+    private val _ordenes = MutableStateFlow<List<OrdenTrabajo>>(emptyList())
     val ordenes = _ordenes.asStateFlow()
 
+    // Las entradas suspendidas al final de esta clase ejecutan estas operaciones en Dispatchers.IO.
+    private fun cargarInterno() { _ordenes.value = cargarOrdenes() }
+    private fun autenticarInterno(correo: String, clave: String): Usuario? = database.autenticar(correo, clave)
+    // Libera la conexión cuando termina el ViewModel y ya no quedan sus tareas pendientes.
+    fun cerrar() = database.close()
+
     // Crea una nueva Orden de Trabajo
-    fun crear(
+    private fun crearInterno(
         local: String,
         equipo: String,
         descripcion: String,
         fecha: String,
         tipo: TipoOt,
         prioridad: PrioridadOt,
+        clienteCorreo: String,
     ): String? {
         if (listOf(local, equipo, descripcion, fecha).any { it.isBlank() }) return null
         if (tipo == TipoOt.SIN_ESPECIFICAR || prioridad == PrioridadOt.SIN_ESPECIFICAR) return null
+        // Calcula el próximo identificador a partir del mayor número presente en la lista actual.
         val siguiente = (_ordenes.value.mapNotNull { it.id.removePrefix("OT-").toIntOrNull() }.maxOrNull() ?: 1000) + 1
         val id = "OT-$siguiente"
         val nueva = OrdenTrabajo(
@@ -42,14 +55,16 @@ class OrdenesRepository(context: Context) {
             tipo = tipo,
             prioridad = prioridad,
             ultimaActualizacion = siguienteMarca(),
+            clienteCorreo = clienteCorreo,
         )
+        // Primero persiste; solo publica la nueva lista si SQLite confirma la inserción.
         if (!database.insertar(nueva)) return null
         _ordenes.value = _ordenes.value + nueva
         return id
     }
 
     // Actualiza los datos principales de una Orden de Trabajo existente (CRUD - Update)
-    fun actualizarDatos(
+    private fun actualizarDatosInterno(
         id: String,
         local: String,
         equipo: String,
@@ -57,8 +72,10 @@ class OrdenesRepository(context: Context) {
         fecha: String,
         tipo: TipoOt,
         prioridad: PrioridadOt,
+        clienteCorreo: String,
     ): Boolean {
         val actual = _ordenes.value.firstOrNull { it.id == id } ?: return false
+        // copy crea otra instancia inmutable con los campos modificados.
         val nueva = actual.copy(
             local = local.trim(),
             equipo = equipo.trim(),
@@ -67,6 +84,7 @@ class OrdenesRepository(context: Context) {
             tipo = tipo,
             prioridad = prioridad,
             ultimaActualizacion = siguienteMarca(),
+            clienteCorreo = clienteCorreo,
         )
         if (!database.actualizar(nueva, actual.estado)) return false
         _ordenes.value = _ordenes.value.map { if (it.id == id) nueva else it }
@@ -74,38 +92,40 @@ class OrdenesRepository(context: Context) {
     }
 
     // Asigna la OT al técnico de demostración
-    fun asignar(id: String): Boolean = cambiar(id, EstadoOt.CREADA) {
+    private fun asignarInterno(id: String): Boolean = cambiar(id, EstadoOt.CREADA) {
         it.copy(estado = EstadoOt.ASIGNADA, tecnico = TECNICO_DEMO)
     }
 
     // El técnico acepta la OT asignada
-    fun aceptar(id: String): Boolean = cambiar(id, EstadoOt.ASIGNADA) {
+    private fun aceptarInterno(id: String): Boolean = cambiar(id, EstadoOt.ASIGNADA) {
         it.copy(estado = EstadoOt.ACEPTADA)
     }
 
     // Inicia la visita técnica, registra la fecha/hora de check-in y guarda la ubicación
-    fun iniciarVisita(id: String, ubicacion: String?): Boolean = cambiar(id, EstadoOt.ACEPTADA) {
+    private fun iniciarVisitaInterno(id: String, ubicacion: String?): Boolean = cambiar(id, EstadoOt.ACEPTADA) {
         it.copy(estado = EstadoOt.EN_VISITA, checkIn = ahora(), ubicacionCheckIn = ubicacion.orEmpty())
     }
 
     // Guarda borrador local del trabajo realizado durante la visita
-    fun guardarBorrador(id: String, diagnostico: String, actividad: String, materiales: String): Boolean =
+    private fun guardarBorradorInterno(id: String, diagnostico: String, actividad: String, materiales: String): Boolean =
         cambiar(id, EstadoOt.EN_VISITA) {
             it.copy(diagnostico = diagnostico.trim(), actividad = actividad.trim(), materiales = materiales.trim())
         }
 
     // Guarda el archivo de fotografía de evidencia asociado a la OT
-    fun guardarFoto(id: String, nombre: String): Boolean {
+    private fun guardarFotoInterno(id: String, nombre: String): Boolean {
         val archivo = File(fotos, nombre)
+        // Acepta un nombre simple y exige un archivo existente con contenido.
         if (nombre != File(nombre).name || !archivo.isFile || archivo.length() == 0L) return false
         val anterior = _ordenes.value.firstOrNull { it.id == id }?.fotoEvidencia.orEmpty()
         val guardado = cambiar(id, EstadoOt.EN_VISITA) { it.copy(fotoEvidencia = nombre) }
+        // Elimina la evidencia anterior únicamente después de guardar la referencia nueva.
         if (guardado && anterior.isNotBlank() && anterior != nombre) File(fotos, anterior).delete()
         return guardado
     }
 
     // Finaliza la visita técnica y registra la fecha/hora de check-out
-    fun enviarInforme(id: String, diagnostico: String, actividad: String, materiales: String): Boolean {
+    private fun enviarInformeInterno(id: String, diagnostico: String, actividad: String, materiales: String): Boolean {
         if (diagnostico.isBlank() || actividad.isBlank()) return false
         return cambiar(id, EstadoOt.EN_VISITA) {
             it.copy(
@@ -119,7 +139,7 @@ class OrdenesRepository(context: Context) {
     }
 
     // Registra una observación formulada por el cliente
-    fun observar(id: String, observacion: String): Boolean {
+    private fun observarInterno(id: String, observacion: String): Boolean {
         if (observacion.isBlank()) return false
         return cambiar(id, EstadoOt.PENDIENTE_CONFORMIDAD) {
             it.copy(estado = EstadoOt.OBSERVADA, observacionCliente = observacion.trim())
@@ -127,7 +147,7 @@ class OrdenesRepository(context: Context) {
     }
 
     // Registra la respuesta del técnico a una observación del cliente
-    fun responderObservacion(id: String, respuesta: String): Boolean {
+    private fun responderObservacionInterno(id: String, respuesta: String): Boolean {
         if (respuesta.isBlank()) return false
         return cambiar(id, EstadoOt.OBSERVADA) {
             it.copy(estado = EstadoOt.PENDIENTE_CONFORMIDAD, respuestaTecnico = respuesta.trim())
@@ -135,17 +155,17 @@ class OrdenesRepository(context: Context) {
     }
 
     // Aprueba la conformidad de la OT y la marca como CERRADA
-    fun aprobar(id: String): Boolean = cambiar(id, EstadoOt.PENDIENTE_CONFORMIDAD) {
+    private fun aprobarInterno(id: String): Boolean = cambiar(id, EstadoOt.PENDIENTE_CONFORMIDAD) {
         it.copy(estado = EstadoOt.CERRADA, fechaConformidad = ahora())
     }
 
     // Elimina una Orden de Trabajo, borrando su archivo de foto y su registro en SQLite (CRUD - Delete)
-    fun borrar(id: String): Boolean {
+    private fun borrarInterno(id: String): Boolean {
         val actual = _ordenes.value.firstOrNull { it.id == id } ?: return false
+        if (!database.borrar(id)) return false
         if (actual.fotoEvidencia.isNotBlank()) {
             File(fotos, actual.fotoEvidencia).delete()
         }
-        if (!database.borrar(id)) return false
         _ordenes.value = _ordenes.value.filterNot { it.id == id }
         return true
     }
@@ -162,15 +182,18 @@ class OrdenesRepository(context: Context) {
     // Carga las órdenes almacenadas en SQLite o las inicializa con datos de demostración
     private fun cargarOrdenes(): List<OrdenTrabajo> {
         val actuales = database.leer()
+        // Si ya se inicializó, respeta incluso una base vacía tras eliminar todas las órdenes.
+        if (database.estaInicializada()) return actuales
         if (actuales.isNotEmpty()) return actuales
+        // Antes de crear ejemplos, intenta recuperar los registros del almacenamiento anterior.
         val anteriores = leerOrdenesAnteriores()
         if (anteriores.isNotEmpty()) {
-            database.guardarTodas(anteriores)
+            check(database.guardarTodas(anteriores)) { "No se pudieron importar las órdenes anteriores" }
             return anteriores
         }
         // Inicializar datos semilla para demostración interactiva
         val semillas = obtenerOrdenesSemilla()
-        database.guardarTodas(semillas)
+        check(database.guardarTodas(semillas)) { "No se pudieron guardar las órdenes iniciales" }
         return semillas
     }
 
@@ -216,6 +239,7 @@ class OrdenesRepository(context: Context) {
         val baseTime = System.currentTimeMillis()
         return listOf(
             OrdenTrabajo(
+                clienteCorreo = CuentasPrueba.CLIENTE,
                 id = "OT-1001",
                 local = "Mall Plaza Vespucio · Local 210",
                 equipo = "Rooftop Carrier 15 TR",
@@ -227,6 +251,7 @@ class OrdenesRepository(context: Context) {
                 ultimaActualizacion = baseTime,
             ),
             OrdenTrabajo(
+                clienteCorreo = CuentasPrueba.CLIENTE,
                 id = "OT-1002",
                 local = "Supermercado Unimarc · Providencia",
                 equipo = "Cámara Frigorífica de Lácteos Bitzer",
@@ -239,6 +264,7 @@ class OrdenesRepository(context: Context) {
                 ultimaActualizacion = baseTime + 1,
             ),
             OrdenTrabajo(
+                clienteCorreo = CuentasPrueba.CLIENTE,
                 id = "OT-1003",
                 local = "Banco Chile · Ahumada 140",
                 equipo = "Chiller Fancoil 30 TR",
@@ -251,6 +277,7 @@ class OrdenesRepository(context: Context) {
                 ultimaActualizacion = baseTime + 2,
             ),
             OrdenTrabajo(
+                clienteCorreo = CuentasPrueba.CLIENTE,
                 id = "OT-1004",
                 local = "Clínica Indisa · Pabellón 3",
                 equipo = "Unidad Manejadora de Aire (UMA) Trane",
@@ -265,6 +292,7 @@ class OrdenesRepository(context: Context) {
                 ultimaActualizacion = baseTime + 3,
             ),
             OrdenTrabajo(
+                clienteCorreo = CuentasPrueba.CLIENTE,
                 id = "OT-1005",
                 local = "Restaurante La Mar · Vitacura",
                 equipo = "Visicooler Industrial Mantenimiento",
@@ -282,6 +310,7 @@ class OrdenesRepository(context: Context) {
                 ultimaActualizacion = baseTime + 4,
             ),
             OrdenTrabajo(
+                clienteCorreo = CuentasPrueba.CLIENTE,
                 id = "OT-1006",
                 local = "Centro Logístico Pudahuel · Bodega 5",
                 equipo = "Condensador Exterior Evaporativo 50 TR",
@@ -300,6 +329,7 @@ class OrdenesRepository(context: Context) {
                 ultimaActualizacion = baseTime + 5,
             ),
             OrdenTrabajo(
+                clienteCorreo = CuentasPrueba.CLIENTE,
                 id = "OT-1007",
                 local = "Oficinas Enel · Torre B Piso 4",
                 equipo = "Sistema VRV Daikin Mantenimiento Anual",
@@ -327,4 +357,29 @@ class OrdenesRepository(context: Context) {
         private fun ahora(): String = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.forLanguageTag("es-CL"))
             .format(Date())
     }
+    // IO evita bloquear Compose; Mutex serializa lecturas/modificaciones de la lista y SQLite.
+    private val mutex = Mutex()
+    // Función genérica: devuelve el resultado de la acción, ejecutada en IO y protegida por Mutex.
+    private suspend fun <T> enIo(accion: () -> T): T = withContext(Dispatchers.IO) {
+        mutex.withLock { accion() }
+    }
+    // API suspendida del repositorio: todas estas entradas pasan por enIo para serializar el acceso.
+    suspend fun cargar() = enIo { cargarInterno() }
+    suspend fun autenticar(correo: String, clave: String) = enIo { autenticarInterno(correo, clave) }
+    suspend fun crear(local: String, equipo: String, descripcion: String, fecha: String, tipo: TipoOt, prioridad: PrioridadOt, clienteCorreo: String) =
+        enIo { crearInterno(local, equipo, descripcion, fecha, tipo, prioridad, clienteCorreo) }
+    suspend fun actualizarDatos(id: String, local: String, equipo: String, descripcion: String, fecha: String, tipo: TipoOt, prioridad: PrioridadOt, clienteCorreo: String) =
+        enIo { actualizarDatosInterno(id, local, equipo, descripcion, fecha, tipo, prioridad, clienteCorreo) }
+    suspend fun asignar(id: String) = enIo { asignarInterno(id) }
+    suspend fun aceptar(id: String) = enIo { aceptarInterno(id) }
+    suspend fun iniciarVisita(id: String, ubicacion: String?) = enIo { iniciarVisitaInterno(id, ubicacion) }
+    suspend fun guardarBorrador(id: String, diagnostico: String, actividad: String, materiales: String) =
+        enIo { guardarBorradorInterno(id, diagnostico, actividad, materiales) }
+    suspend fun guardarFoto(id: String, nombre: String) = enIo { guardarFotoInterno(id, nombre) }
+    suspend fun enviarInforme(id: String, diagnostico: String, actividad: String, materiales: String) =
+        enIo { enviarInformeInterno(id, diagnostico, actividad, materiales) }
+    suspend fun observar(id: String, observacion: String) = enIo { observarInterno(id, observacion) }
+    suspend fun responderObservacion(id: String, respuesta: String) = enIo { responderObservacionInterno(id, respuesta) }
+    suspend fun aprobar(id: String) = enIo { aprobarInterno(id) }
+    suspend fun borrar(id: String) = enIo { borrarInterno(id) }
 }

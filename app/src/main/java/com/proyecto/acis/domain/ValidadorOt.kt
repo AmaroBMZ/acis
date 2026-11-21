@@ -2,6 +2,11 @@ package com.proyecto.acis.domain
 
 import com.proyecto.acis.data.PrioridadOt
 import com.proyecto.acis.data.TipoOt
+import com.proyecto.acis.data.CuentasPrueba
+import com.proyecto.acis.data.Perfil
+import java.text.SimpleDateFormat
+import java.text.ParsePosition
+import java.util.Locale
 
 /**
  * Datos requeridos para registrar una nueva Orden de Trabajo.
@@ -14,6 +19,7 @@ data class DatosCrearOt(
     val prioridad: PrioridadOt? = null,
     val fecha: String = "",
     val hora: String = "",
+    val clienteCorreo: String = CuentasPrueba.CLIENTE,
 )
 
 /**
@@ -27,10 +33,11 @@ data class ErroresCrearOt(
     val prioridad: String? = null,
     val fecha: String? = null,
     val hora: String? = null,
+    val clienteCorreo: String? = null,
 ) {
     // Retorna true si al menos un campo tiene un mensaje de error
     val hayErrores: Boolean
-        get() = listOf(local, equipo, descripcion, tipo, prioridad, fecha, hora).any { it != null }
+        get() = listOf(local, equipo, descripcion, tipo, prioridad, fecha, hora, clienteCorreo).any { it != null }
 }
 
 /**
@@ -55,9 +62,20 @@ object ValidadorOt {
         descripcion = if (datos.descripcion.isBlank()) "Describe el trabajo" else null,
         tipo = if (datos.tipo == null || datos.tipo == TipoOt.SIN_ESPECIFICAR) "Selecciona un tipo" else null,
         prioridad = if (datos.prioridad == null || datos.prioridad == PrioridadOt.SIN_ESPECIFICAR) "Selecciona una prioridad" else null,
-        fecha = if (datos.fecha.isBlank()) "Selecciona una fecha" else null,
-        hora = if (datos.hora.isBlank()) "Selecciona una hora" else null,
+        fecha = if (!fechaValida(datos.fecha)) "Selecciona una fecha válida (dd/MM/yyyy)" else null,
+        hora = if (!Regex("([01][0-9]|2[0-3]):[0-5][0-9]").matches(datos.hora)) "Selecciona una hora válida (HH:mm)" else null,
+        clienteCorreo = if (CuentasPrueba.usuarios.none { it.perfil == Perfil.CLIENTE && it.correo == datos.clienteCorreo }) "Selecciona el cliente" else null,
     )
+
+    // Comprueba formato exacto y calendario real; no exige que la fecha esté en el futuro.
+    private fun fechaValida(valor: String): Boolean {
+        if (!Regex("[0-9]{2}/[0-9]{2}/[0-9]{4}").matches(valor)) return false
+        // isLenient = false impide ajustar fechas imposibles, como convertir 31 de febrero a marzo.
+        val formato = SimpleDateFormat("dd/MM/yyyy", Locale.ROOT).apply { isLenient = false }
+        val posicion = ParsePosition(0)
+        // Exige consumir todo el texto para rechazar caracteres adicionales al final.
+        return formato.parse(valor, posicion) != null && posicion.index == valor.length
+    }
 
     // Valida que el informe técnico contenga diagnóstico y actividad realizada
     fun informe(diagnostico: String, actividad: String) = ErroresInforme(

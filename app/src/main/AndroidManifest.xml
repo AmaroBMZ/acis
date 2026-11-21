@@ -2,6 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Autoriza ubicación aproximada; además se solicita al usuario durante el check-in. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application
@@ -13,6 +14,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Acis">
+        <!-- Comparte evidencias con la cámara mediante permisos temporales sobre una URI. -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -22,6 +24,7 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+        <!-- Pantalla de entrada: MAIN y LAUNCHER permiten abrirla desde el icono de la app. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -30,7 +30,9 @@ fun SuccessToast(
     message: String,
     modifier: Modifier = Modifier,
 ) {
+    // Superpone el aviso en la parte superior; show controla su visibilidad desde la pantalla.
     Box(modifier = modifier.fillMaxSize()) {
+        // Combina desplazamiento vertical y desvanecimiento al aparecer o desaparecer.
         AnimatedVisibility(
             visible = show,
             enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),

@@ -7,6 +7,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
 // Set of Material typography styles to start with
+// Personaliza bodyLarge; los demás estilos activos conservan sus valores de Material 3.
 val Typography = Typography(
     bodyLarge = TextStyle(
         fontFamily = FontFamily.Default,
@@ -15,6 +16,7 @@ val Typography = Typography(
         lineHeight = 24.sp,
         letterSpacing = 0.5.sp
     )
+    // El bloque siguiente es un ejemplo comentado: no cambia la tipografía de la app.
     /* Other default text styles to override
     titleLarge = TextStyle(
         fontFamily = FontFamily.Default,

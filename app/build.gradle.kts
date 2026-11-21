@@ -1,3 +1,4 @@
+// Activa la aplicación Android y el compilador de Compose mediante el catálogo de versiones.
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -9,6 +10,7 @@ android {
         version = release(37)
     }
 
+    // Identidad, versiones Android admitidas y runner de pruebas en dispositivo.
     defaultConfig {
         applicationId = "com.proyecto.acis"
         minSdk = 24
@@ -20,6 +22,12 @@ android {
     }
 
     buildTypes {
+        // El sufijo instala la variante de pruebas como una app independiente con sus propios datos.
+        debug {
+            applicationIdSuffix = ".pruebas"
+            versionNameSuffix = "-pruebas"
+        }
+        // Configura la optimización para la variante de publicación.
         release {
             optimization {
                 enable = true
@@ -27,6 +35,7 @@ android {
             }
         }
     }
+    // Compatibilidad del código Java; no indica la versión del JDK que ejecuta Gradle.
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -36,6 +45,7 @@ android {
     }
 }
 
+// implementation: app; testImplementation: JVM; androidTestImplementation: dispositivo.
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
@@ -45,6 +55,8 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.ktx)
+    implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.navigation.compose)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

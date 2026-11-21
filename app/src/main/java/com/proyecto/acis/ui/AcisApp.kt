@@ -7,6 +7,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
@@ -57,6 +58,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.TopAppBar
+import com.proyecto.acis.data.CuentasPrueba
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -110,20 +116,68 @@ private object RutasAcis {
     fun editar(ordenId: String) = "editar/$ordenId"
 }
 
+@Composable
+// Respaldo cuando el ID no existe o la cuenta no puede consultar esa orden.
+private fun OrdenNoDisponible(onVolver: () -> Unit) {
+    Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("La orden no existe o no está disponible para tu cuenta.")
+        Button(onClick = onVolver) { Text("Volver") }
+    }
+}
+
+@Composable
+// Presenta únicamente cuentas demo con rol cliente para elegir al propietario de la OT.
+private fun SelectorCliente(viewModel: OrdenesViewModel) {
+    Column {
+        Text("Cliente de la orden", style = MaterialTheme.typography.titleMedium)
+        CuentasPrueba.usuarios.filter { it.perfil == Perfil.CLIENTE }.forEach { cliente ->
+            FilterChip(selected = viewModel.datosCrear.clienteCorreo == cliente.correo,
+                onClick = { viewModel.cambiarCliente(cliente.correo) }, label = { Text(cliente.correo) })
+        }
+        viewModel.erroresCrear.clienteCorreo?.let { ErrorSeleccion(it) }
+    }
+}
+
 /**
  * Contenedor principal de la interfaz ACIS adaptado al diseño de referencia.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
+    val usuario = viewModel.usuario
+    if (usuario == null) {
+        LoginScreen(viewModel, modifier)
+    } else {
+        // Cambiar de cuenta descarta el navegador y los estados de la sesión anterior.
+        key(usuario.correo) { AplicacionAutenticada(viewModel, modifier) }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+// Organiza barra superior, navegación y acciones de la sesión activa.
+private fun AplicacionAutenticada(viewModel: OrdenesViewModel, modifier: Modifier) {
     val navController = rememberNavController()
+    // collectAsState convierte el StateFlow en estado Compose: una nueva lista actualiza la UI.
     val ordenes by viewModel.ordenes.collectAsState()
     val perfil = viewModel.perfil
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val rutaActual = navBackStackEntry?.destination?.route
+    // Consume Atrás mientras el ViewModel procesa una operación.
+    BackHandler(enabled = viewModel.ocupado) { }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        topBar = {
+            Column {
+                TopAppBar(
+                    title = { Text(viewModel.usuario?.nombre.orEmpty()) },
+                    actions = { TextButton(onClick = viewModel::cerrarSesion, enabled = !viewModel.ocupado) { Text("Salir") } },
+                )
+                viewModel.errorGeneral?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(12.dp)) }
+                if (viewModel.ocupado) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+        },
         floatingActionButton = {
             // Botón flotante (+) para crear nueva OT (visible para Planificador en la lista)
             if (rutaActual == RutasAcis.ORDENES && perfil == Perfil.PLANIFICADOR) {
@@ -131,7 +185,10 @@ fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                     shape = CircleShape,
-                    onClick = { navController.navigate(RutasAcis.CREAR) },
+                    onClick = { if (!viewModel.ocupado) {
+                        viewModel.nuevoFormulario()
+                        navController.navigate(RutasAcis.CREAR) { launchSingleTop = true }
+                    } },
                 ) {
                     Text(
                         text = "+",
@@ -181,10 +238,9 @@ fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
                 composable(RutasAcis.ORDENES) {
                     Crossfade(targetState = perfil, animationSpec = tween(380), label = "cambio de perfil") { perfilVisible ->
                         ListaOrdenesAdaptada(
-                            ordenes = viewModel.ordenesParaPerfil(ordenes, perfilVisible),
+                            todasOrdenes = viewModel.ordenesParaPerfil(ordenes, perfilVisible),
                             perfil = perfilVisible,
-                            onSeleccionarPerfil = { nuevo -> viewModel.seleccionarPerfil(nuevo) },
-                            onSeleccionar = { id -> navController.navigate(RutasAcis.detalle(id)) },
+                            onSeleccionar = { id -> navController.navigate(RutasAcis.detalle(id)) { launchSingleTop = true } },
                         )
                     }
                 }
@@ -194,11 +250,12 @@ fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
                         viewModel = viewModel,
                         onVolver = { navController.popBackStack() },
                         onCrear = {
-                            val id = viewModel.crear()
-                            if (id != null) {
-                                navController.navigate(RutasAcis.detalle(id)) {
-                                    popUpTo(RutasAcis.ORDENES) { inclusive = false }
-                                    launchSingleTop = true
+                            viewModel.crear { id ->
+                                if (id != null) {
+                                    navController.navigate(RutasAcis.detalle(id)) {
+                                        popUpTo(RutasAcis.ORDENES) { inclusive = false }
+                                        launchSingleTop = true
+                                    }
                                 }
                             }
                         },
@@ -211,13 +268,13 @@ fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
                 ) { entrada ->
                     val ordenId = entrada.arguments?.getString("ordenId")
                     val orden = ordenes.firstOrNull { it.id == ordenId }
-                    if (orden != null) {
+                    if (orden != null && perfil == Perfil.PLANIFICADOR) {
                         EditarOrden(
                             orden = orden,
                             viewModel = viewModel,
                             onVolver = { navController.popBackStack() },
                         )
-                    }
+                    } else OrdenNoDisponible { navController.popBackStack() }
                 }
                 // Pantalla de detalle e intervención de la OT (CRUD - Read / Actions)
                 composable(
@@ -226,7 +283,7 @@ fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
                 ) { entrada ->
                     val ordenId = entrada.arguments?.getString("ordenId")
                     val orden = ordenes.firstOrNull { it.id == ordenId }
-                    if (orden != null) {
+                    if (orden != null && viewModel.puedeVer(orden)) {
                         DetalleOrden(
                             orden = orden,
                             perfil = perfil,
@@ -234,7 +291,7 @@ fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
                             onVolver = { navController.popBackStack() },
                             onEditar = { navController.navigate(RutasAcis.editar(orden.id)) },
                         )
-                    }
+                    } else OrdenNoDisponible { navController.popBackStack() }
                 }
             }
         }
@@ -244,17 +301,24 @@ fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
 /**
  * Vista principal inspirada en la distribución de la captura de pantalla:
  * 1. Encabezado con Avatar e Identidad de la aplicación ("ACIS · Servicios Técnicos").
- * 2. Tarjeta contenedora de selección de Perfil.
+ * 2. Tarjeta con el perfil autenticado y filtros de búsqueda.
  * 3. Tarjeta destacada de Orden de Trabajo Reciente.
  * 4. Listado completo de "Todas las Órdenes de Trabajo" estilizado en bloques verticales.
  */
 @Composable
 private fun ListaOrdenesAdaptada(
-    ordenes: List<OrdenTrabajo>,
+    todasOrdenes: List<OrdenTrabajo>,
     perfil: Perfil,
-    onSeleccionarPerfil: (Perfil) -> Unit,
     onSeleccionar: (String) -> Unit,
 ) {
+    // Los filtros se conservan al recrear la pantalla; se aplican sobre las órdenes ya autorizadas.
+    var busqueda by rememberSaveable { mutableStateOf("") }
+    var estadoFiltro by rememberSaveable { mutableStateOf<String?>(null) }
+    val ordenes = todasOrdenes.filter {
+        (estadoFiltro == null || it.estado.name == estadoFiltro) &&
+            "${it.id} ${it.local} ${it.equipo}".contains(busqueda.trim(), ignoreCase = true)
+    }
+    // El ViewModel entrega la lista por última modificación; esta tarjeta usa la primera coincidencia.
     val ordenReciente = ordenes.firstOrNull()
 
     LazyColumn(
@@ -299,7 +363,7 @@ private fun ListaOrdenesAdaptada(
             }
         }
 
-        // 2. SECTOR DE SELECCIÓN DE PERFIL ACTIVO
+        // 2. PERFIL DE LA CUENTA AUTENTICADA
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -317,19 +381,24 @@ private fun ListaOrdenesAdaptada(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.horizontalScroll(rememberScrollState()),
                     ) {
-                        Perfil.entries.forEach { opcion ->
-                            FilterChip(
-                                selected = perfil == opcion,
-                                onClick = { onSeleccionarPerfil(opcion) },
-                                label = { Text(opcion.etiqueta) },
-                            )
-                        }
+                        Text("Acceso según tu cuenta")
                     }
                 }
             }
         }
 
         // 3. TARJETA DESTACADA: ÓRDENES RECIENTES
+        item {
+            OutlinedTextField(busqueda, { busqueda = it }, label = { Text("Buscar OT, local o equipo") },
+                singleLine = true, modifier = Modifier.fillMaxWidth())
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = estadoFiltro == null, onClick = { estadoFiltro = null }, label = { Text("Todas") })
+                EstadoOt.entries.forEach { estado ->
+                    FilterChip(selected = estadoFiltro == estado.name, onClick = { estadoFiltro = estado.name }, label = { Text(estado.etiqueta) })
+                }
+            }
+            Text("${ordenes.size} órdenes encontradas")
+        }
         item {
             Card(
                 modifier = Modifier
@@ -404,7 +473,7 @@ private fun ListaOrdenesAdaptada(
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                         )
                         Text(
-                            text = "Cambia de perfil o presiona el botón + para registrar la primera orden de trabajo en el sistema.",
+                            text = "Prueba otra búsqueda o filtro. Si eres planificador, usa + para registrar una orden.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f),
                         )
@@ -542,9 +611,11 @@ private fun CrearOrden(
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    // Fecha inicial de los selectores; remember evita recrearla en cada recomposición.
     val ahora = remember { Calendar.getInstance() }
     val datos = viewModel.datosCrear
     val errores = viewModel.erroresCrear
+    // Estado propio de los diálogos de fecha y hora; el formulario definitivo vive en el ViewModel.
     var dia by rememberSaveable { mutableStateOf(ahora.get(Calendar.DAY_OF_MONTH)) }
     var mes by rememberSaveable { mutableStateOf(ahora.get(Calendar.MONTH)) }
     var anio by rememberSaveable { mutableStateOf(ahora.get(Calendar.YEAR)) }
@@ -556,9 +627,10 @@ private fun CrearOrden(
         contentPadding = PaddingValues(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item { TextButton(onClick = onVolver) { Text("← Volver a la lista") } }
+        item { TextButton(onClick = onVolver, enabled = !viewModel.ocupado) { Text("← Volver a la lista") } }
         item { Text("Nueva orden de trabajo", style = MaterialTheme.typography.headlineSmall) }
-        item { CampoFormulario(datos.local, viewModel::cambiarLocal, "Local", errores.local) }
+        item { SelectorCliente(viewModel) }
+            item { CampoFormulario(datos.local, viewModel::cambiarLocal, "Local", errores.local) }
         item { CampoFormulario(datos.equipo, viewModel::cambiarEquipo, "Equipo", errores.equipo) }
         item { CampoFormulario(datos.descripcion, viewModel::cambiarDescripcion,
             "Descripción del trabajo", errores.descripcion, minLines = 3) }
@@ -655,9 +727,9 @@ private fun EditarOrden(
     val keyboardController = LocalSoftwareKeyboardController.current
     val ahora = remember { Calendar.getInstance() }
 
-    remember(orden.id) {
+    // Carga el formulario al entrar a otra OT, sin sobrescribirlo en cada recomposición.
+    LaunchedEffect(orden.id) {
         viewModel.cargarParaEditar(orden)
-        true
     }
 
     val datos = viewModel.datosCrear
@@ -675,8 +747,9 @@ private fun EditarOrden(
             contentPadding = PaddingValues(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item { TextButton(onClick = onVolver) { Text("← Volver") } }
+            item { TextButton(onClick = onVolver, enabled = !viewModel.ocupado) { Text("← Volver") } }
             item { Text("Editar Orden de Trabajo (${orden.id})", style = MaterialTheme.typography.headlineSmall) }
+            item { SelectorCliente(viewModel) }
             item { CampoFormulario(datos.local, viewModel::cambiarLocal, "Local", errores.local) }
             item { CampoFormulario(datos.equipo, viewModel::cambiarEquipo, "Equipo", errores.equipo) }
             item { CampoFormulario(datos.descripcion, viewModel::cambiarDescripcion,
@@ -748,9 +821,11 @@ private fun EditarOrden(
                     onClick = {
                         focusManager.clearFocus()
                         keyboardController?.hide()
-                        if (viewModel.actualizarOt(orden.id)) {
-                            toastExito = true
-                            onVolver()
+                        viewModel.actualizarOt(orden.id) { actualizado ->
+                            if (actualizado) {
+                                toastExito = true
+                                onVolver()
+                            }
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -781,6 +856,7 @@ private fun DetalleOrden(
     val context = LocalContext.current
     val scopeUbicacion = rememberCoroutineScope()
     var buscandoUbicacion by rememberSaveable(orden.id) { mutableStateOf(false) }
+    // Lanza la búsqueda sin bloquear la pantalla y pasa el resultado al inicio de visita.
     val iniciarConUbicacion: () -> Unit = {
         buscandoUbicacion = true
         scopeUbicacion.launch {
@@ -789,25 +865,35 @@ private fun DetalleOrden(
             buscandoUbicacion = false
         }
     }
+    // El resultado del permiso decide si buscar coordenadas o registrar el check-in sin ubicación.
     val permisoUbicacion = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { concedido ->
         if (concedido) iniciarConUbicacion()
         else viewModel.iniciarVisita(orden.id, null)
     }
+    // Guarda el nombre del archivo pendiente mientras la app de cámara está abierta.
     var fotoPendiente by rememberSaveable(orden.id) { mutableStateOf("") }
     var errorCamara by rememberSaveable(orden.id) { mutableStateOf("") }
+    // TakePicture informa si se capturó la imagen; después se intenta asociarla a la OT.
     val camara = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { guardada ->
         val nombre = fotoPendiente
         fotoPendiente = ""
         if (nombre.isNotBlank()) {
             val archivo = File(File(context.filesDir, "evidencias"), nombre)
-            if (guardada && viewModel.guardarFoto(orden.id, nombre)) {
-                errorCamara = ""
+            if (guardada) {
+                viewModel.guardarFoto(orden.id, nombre) { guardado ->
+                    if (guardado) errorCamara = ""
+                    else {
+                        archivo.delete()
+                        errorCamara = "No se pudo guardar la foto."
+                    }
+                }
             } else {
                 archivo.delete()
                 if (guardada) errorCamara = "No se pudo guardar la foto."
             }
         }
     }
+    // Recupera el borrador de esta OT y calcula los errores que corresponde mostrar.
     val formulario = viewModel.formularioDetalle(orden)
     val erroresInforme = viewModel.erroresInforme(orden.id, formulario.diagnostico, formulario.actividad)
     val errorObservacion = viewModel.errorObservacion(orden.id, formulario.observacion)
@@ -819,7 +905,7 @@ private fun DetalleOrden(
         contentPadding = PaddingValues(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        item { TextButton(onClick = onVolver) { Text("← Volver a la lista") } }
+        item { TextButton(onClick = onVolver, enabled = !viewModel.ocupado) { Text("← Volver a la lista") } }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(orden.id, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
@@ -836,6 +922,7 @@ private fun DetalleOrden(
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     CampoDetalle("Local", orden.local)
+                    CampoDetalle("Cliente", orden.clienteCorreo.ifBlank { "Pendiente de asignación" })
                     CampoDetalle("Equipo", orden.equipo)
                     CampoDetalle("Tipo de trabajo", orden.tipo.etiqueta)
                     PrioridadBadge(orden.prioridad)
@@ -853,6 +940,7 @@ private fun DetalleOrden(
                     if (orden.fechaConformidad.isNotBlank()) CampoDetalle("Conformidad", orden.fechaConformidad)
                     if (orden.fotoEvidencia.isNotBlank()) {
                         val archivo = File(File(context.filesDir, "evidencias"), orden.fotoEvidencia)
+                        // Evita decodificar de nuevo la misma evidencia en cada recomposición.
                         val foto = remember(orden.fotoEvidencia) {
                             val opciones = BitmapFactory.Options().apply { inSampleSize = 4 }
                             BitmapFactory.decodeFile(archivo.path, opciones)?.asImageBitmap()
@@ -913,6 +1001,7 @@ private fun DetalleOrden(
                         archivoNuevo = archivo
                         fotoPendiente = archivo.name
                         errorCamara = ""
+                        // Comparte el archivo con la cámara mediante una URI content del FileProvider.
                         val uri = FileProvider.getUriForFile(
                             context, "${context.packageName}.fileprovider", archivo,
                         )
@@ -989,8 +1078,8 @@ private fun DetalleOrden(
                                 Button(
                                     onClick = {
                                         mostrarConfirmacion = false
-                                        if (viewModel.borrar(orden.id)) {
-                                            onVolver()
+                                        viewModel.borrar(orden.id) { borrada ->
+                                            if (borrada) onVolver()
                                         }
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
@@ -1024,6 +1113,7 @@ private fun CampoFormulario(
     error: String? = null,
     minLines: Int = 1,
 ) {
+    // Al enfocar el campo, solicita desplazarlo a una zona visible sobre el teclado.
     val traerAlFrente = remember { BringIntoViewRequester() }
     val scope = rememberCoroutineScope()
     OutlinedTextField(
@@ -1050,6 +1140,7 @@ private fun CampoFormulario(
  * Utilidad para capitalizar automáticamente la primera letra de cada oración.
  */
 private fun capitalizarOraciones(texto: String): String = buildString {
+    // Recorre letras conservando el texto; tras puntuación o salto de línea vuelve a capitalizar.
     var inicio = true
     texto.forEach { letra ->
         append(if (inicio && letra.isLetter()) letra.uppercaseChar() else letra)

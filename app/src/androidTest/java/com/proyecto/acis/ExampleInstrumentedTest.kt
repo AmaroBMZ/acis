@@ -17,8 +17,8 @@ import org.junit.Assert.*
 class ExampleInstrumentedTest {
     @Test
     fun useAppContext() {
-        // Context of the app under test.
+        // Obtiene el contexto de la app instalada y comprueba el identificador debug independiente.
         val appContext = InstrumentationRegistry.getInstrumentation().targetContext
-        assertEquals("com.proyecto.acis", appContext.packageName)
+        assertEquals("com.proyecto.acis.pruebas", appContext.packageName)
     }
 }

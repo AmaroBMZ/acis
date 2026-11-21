@@ -6,6 +6,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 
+// Asocia los colores oscuros a las funciones visuales de Material 3.
 private val DarkColorScheme = darkColorScheme(
     primary = BluePrimaryDark,
     onPrimary = OnBluePrimaryDark,
@@ -27,6 +28,7 @@ private val DarkColorScheme = darkColorScheme(
     onSurfaceVariant = OnSurfaceVariantDark,
 )
 
+// Asocia la paleta clara a las mismas funciones para mantener consistencia entre pantallas.
 private val LightColorScheme = lightColorScheme(
     primary = BluePrimaryLight,
     onPrimary = OnBluePrimaryLight,
@@ -48,6 +50,7 @@ private val LightColorScheme = lightColorScheme(
     onSurfaceVariant = OnSurfaceVariantLight,
 )
 
+// Aplica colores y tipografía a todo content. dynamicColor está declarado, pero no se utiliza.
 @Composable
 fun AcisTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
