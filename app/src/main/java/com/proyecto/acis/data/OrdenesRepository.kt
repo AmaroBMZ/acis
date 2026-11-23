@@ -25,10 +25,12 @@ class OrdenesRepository(context: Context, private val database: OrdenesDb = Orde
     private val _ordenes = MutableStateFlow<List<OrdenTrabajo>>(emptyList())
     val ordenes = _ordenes.asStateFlow()
     private val _usuarios = MutableStateFlow<List<Usuario>>(emptyList())
+    // Publica identidades y accesos de solo lectura; la UI no modifica directamente esta lista.
     val usuarios = _usuarios.asStateFlow()
 
     // Las entradas suspendidas al final de esta clase ejecutan estas operaciones en Dispatchers.IO.
     private fun cargarInterno() {
+        // Primero abre/inicializa la base; después publica las cuentas, incluida la migración del administrador.
         _ordenes.value = cargarOrdenes()
         _usuarios.value = database.leerUsuarios()
     }
@@ -117,7 +119,7 @@ class OrdenesRepository(context: Context, private val database: OrdenesDb = Orde
             it.copy(diagnostico = diagnostico.trim(), actividad = actividad.trim(), materiales = materiales.trim())
         }
 
-    // Guarda el archivo de fotografía de evidencia asociado a la OT
+    // Asocia a la OT un archivo ya creado por la cámara; aquí se guarda su nombre en SQLite.
     private fun guardarFotoInterno(id: String, nombre: String): Boolean {
         val archivo = File(fotos, nombre)
         // Acepta un nombre simple y exige un archivo existente con contenido.
@@ -175,11 +177,13 @@ class OrdenesRepository(context: Context, private val database: OrdenesDb = Orde
         return true
     }
 
-    // Función auxiliar para aplicar y persistir cambios de estado de manera atómica
+    // Centraliza las transiciones: exige el estado de origen antes de aplicar la función cambio.
     private fun cambiar(id: String, estadoRequerido: EstadoOt, cambio: (OrdenTrabajo) -> OrdenTrabajo): Boolean {
         val actual = _ordenes.value.firstOrNull { it.id == id && it.estado == estadoRequerido } ?: return false
+        // cambio recibe la OT actual y devuelve otra instancia; la marca permite ordenar la lista.
         val nueva = cambio(actual).copy(ultimaActualizacion = siguienteMarca())
         if (!database.actualizar(nueva, estadoRequerido)) return false
+        // Publica solo después de persistir. SQLite y StateFlow no forman una única transacción.
         _ordenes.value = _ordenes.value.map { if (it.id == id) nueva else it }
         return true
     }
@@ -208,7 +212,7 @@ class OrdenesRepository(context: Context, private val database: OrdenesDb = Orde
         (_ordenes.value.maxOfOrNull { it.ultimaActualizacion } ?: 0L) + 1,
     )
 
-    // Lee registros creados en versiones anteriores desde SharedPreferences como respaldo
+    // Importación de una versión anterior: no es una copia de seguridad de los cambios actuales.
     private fun leerOrdenesAnteriores(): List<OrdenTrabajo> = try {
         val json = JSONArray(preferences.getString("ordenes", "[]"))
         (0 until json.length()).map { index ->
@@ -236,6 +240,7 @@ class OrdenesRepository(context: Context, private val database: OrdenesDb = Orde
             )
         }
     } catch (_: Exception) {
+        // Si el JSON no se puede interpretar, la carga inicial continúa con una lista vacía.
         emptyList()
     }
 
@@ -371,7 +376,9 @@ class OrdenesRepository(context: Context, private val database: OrdenesDb = Orde
     // API suspendida del repositorio: todas estas entradas pasan por enIo para serializar el acceso.
     suspend fun cargar() = enIo { cargarInterno() }
     suspend fun actualizarAcceso(actorCorreo: String, correo: String, perfil: Perfil, activo: Boolean): Boolean = enIo {
+        // enIo ejecuta fuera del hilo de la interfaz y serializa el acceso mediante Mutex.
         val guardado = database.actualizarAcceso(actorCorreo, correo, perfil, activo)
+        // Recarga solo tras confirmar la escritura para no mostrar permisos que no llegaron a guardarse.
         if (guardado) _usuarios.value = database.leerUsuarios()
         guardado
     }

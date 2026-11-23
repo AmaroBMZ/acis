@@ -55,7 +55,8 @@ data class ErroresInforme(
  * Objeto de dominio que contiene las reglas de validación para los formularios de ACIS.
  */
 object ValidadorOt {
-    // Valida que todos los campos del formulario de creación de OT estén completos
+    // Devuelve mensajes por campo; null significa que ese campo cumple su regla.
+    // El ViewModel pasa los correos de clientes activos de SQLite. El valor por defecto usa las demos.
     fun crear(datos: DatosCrearOt, clientes: List<String> = CuentasPrueba.usuarios.filter { it.perfil == Perfil.CLIENTE }.map { it.correo }) = ErroresCrearOt(
         local = if (datos.local.isBlank()) "Ingresa el local" else null,
         equipo = if (datos.equipo.isBlank()) "Ingresa el equipo" else null,

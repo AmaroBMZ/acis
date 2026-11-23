@@ -45,7 +45,7 @@ internal fun OrdenNoDisponible(onVolver: () -> Unit) {
 }
 
 @Composable
-// Presenta únicamente cuentas demo con rol cliente para elegir al propietario de la OT.
+// Usa las cuentas activas con rol cliente cargadas desde SQLite, incluidos los cambios del administrador.
 internal fun SelectorCliente(viewModel: OrdenesViewModel) {
     Column {
         Text("Cliente de la orden", style = MaterialTheme.typography.titleMedium)
@@ -74,6 +74,7 @@ internal fun CampoFormulario(
     val scope = rememberCoroutineScope()
     OutlinedTextField(
         value = valor,
+        // Entrega el texto transformado al dueño del estado; este componente no guarda datos en SQLite.
         onValueChange = { onCambio(capitalizarOraciones(it)) },
         label = { Text(etiqueta) },
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),

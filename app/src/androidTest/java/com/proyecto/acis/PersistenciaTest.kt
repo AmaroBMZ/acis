@@ -27,6 +27,7 @@ class PersistenciaTest {
     @After fun limpiar() { db.close(); context.deleteDatabase(nombre) }
 
     @Test fun accesoAdministrativoSeValidaEnLaBaseYPersiste() = runBlocking {
+        // Intenta escrituras directamente en SQLite para comprobar que la protección no depende del botón.
         repo.cargar()
         val admin = "admin@acis.cl"
         val cliente = CuentasPrueba.CLIENTE
@@ -43,6 +44,7 @@ class PersistenciaTest {
     }
 
     @Test fun migracionCincoAgregaAdminSinCambiarClavesNiBorrarDatos() {
+        // Construye una base v5 temporal con credenciales propias y una orden que debe sobrevivir.
         val ruta = context.getDatabasePath(nombre)
         ruta.parentFile!!.mkdirs()
         val sal = Claves.nuevaSal()
@@ -55,6 +57,7 @@ class PersistenciaTest {
                 arrayOf("antiguo@acis.cl", "Anterior", "CLIENTE", sal, hash))
             anterior.version = 5
         }
+        // La primera apertura mediante el helper ejecuta la migración antes de autenticar.
         assertNotNull(db.autenticar("antiguo@acis.cl", "ClaveAnterior!"))
         assertEquals(Perfil.ADMINISTRADOR, db.autenticar("admin@acis.cl", CuentasPrueba.CLAVE)?.perfil)
         db.readableDatabase.rawQuery("SELECT id FROM ordenes", null).use {
@@ -131,7 +134,7 @@ class PersistenciaTest {
         assertFalse(repo.borrar("inexistente"))
     }
 
-    // Simula v4 y comprueba que migrar a v5 conserva la OT sin inventarle un propietario.
+    // Simula v4 y migra a la versión actual (v6), conservando la OT sin inventarle un propietario.
     @Test fun migracionVersionCuatroConservaOrdenesSinExponerlasAUnCliente() {
         // Construye el esquema anterior, con un registro existente, en una base temporal.
         val ruta = context.getDatabasePath(nombre)

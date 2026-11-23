@@ -77,6 +77,7 @@ internal fun CrearOrden(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
             ) {
+                // SIN_ESPECIFICAR sirve para datos incompletos; el formulario exige una opción real.
                 TipoOt.entries.filter { it != TipoOt.SIN_ESPECIFICAR }.forEach { tipo ->
                     FilterChip(selected = datos.tipo == tipo,
                         onClick = { viewModel.cambiarTipo(tipo) }, label = { Text(tipo.etiqueta) })
@@ -107,6 +108,7 @@ internal fun CrearOrden(
                         anio = nuevoAnio
                         mes = nuevoMes
                         dia = nuevoDia
+                        // Android numera los meses desde cero; el texto de negocio usa 1 a 12.
                         viewModel.cambiarFecha(String.format(
                             Locale.forLanguageTag("es-CL"), "%02d/%02d/%04d", dia, mes + 1, anio,
                         ))
@@ -141,6 +143,7 @@ internal fun CrearOrden(
                 onClick = {
                     focusManager.clearFocus()
                     keyboardController?.hide()
+                    // El navegador coordina guardar y volver; pulsar el botón no confirma la creación.
                     onCrear()
                 },
                 modifier = Modifier.fillMaxWidth(),

@@ -10,7 +10,7 @@ import android.database.sqlite.SQLiteOpenHelper
  * Gestor de la base de datos SQLite local para el almacenamiento persistente de OTs sin conexión.
  */
 class OrdenesDb(context: Context, nombre: String = "acis_ordenes.db") : SQLiteOpenHelper(context, nombre, null, 6) {
-    // Creación de la tabla principal de órdenes de trabajo
+    // La primera apertura crea órdenes, usuarios y configuración; las OTs demo las carga el repositorio.
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""
             CREATE TABLE ordenes (
@@ -42,6 +42,7 @@ class OrdenesDb(context: Context, nombre: String = "acis_ordenes.db") : SQLiteOp
 
     // Actualización progresiva del esquema de la base de datos
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        // Son if independientes: una instalación antigua necesita aplicar todos los pasos que le faltan.
         if (oldVersion < 2) {
             db.execSQL("ALTER TABLE ordenes ADD COLUMN fotoEvidencia TEXT NOT NULL DEFAULT ''")
         }
@@ -59,10 +60,12 @@ class OrdenesDb(context: Context, nombre: String = "acis_ordenes.db") : SQLiteOp
         }
         // v5 ya tiene usuarios. Agrega activación y administrador sin borrar órdenes ni claves.
         if (oldVersion == 5) {
+            // DEFAULT 1 mantiene activas las cuentas existentes. Versiones anteriores crean ya la tabla nueva.
             db.execSQL("ALTER TABLE usuarios ADD COLUMN activo INTEGER NOT NULL DEFAULT 1")
             val admin = CuentasPrueba.usuarios.first { it.perfil == Perfil.ADMINISTRADOR }
             val sal = Claves.nuevaSal()
             db.insertWithOnConflict("usuarios", null, ContentValues().apply {
+                // La cuenta demo recibe su propia sal; CONFLICT_IGNORE conserva un correo ya existente.
                 put("correo", admin.correo); put("nombre", admin.nombre); put("perfil", admin.perfil.name)
                 put("sal", sal); put("hash", Claves.derivar(CuentasPrueba.CLAVE, sal))
             }, SQLiteDatabase.CONFLICT_IGNORE)
@@ -104,18 +107,21 @@ class OrdenesDb(context: Context, nombre: String = "acis_ordenes.db") : SQLiteOp
     fun actualizarAcceso(actorCorreo: String, correo: String, perfil: Perfil, activo: Boolean): Boolean {
         val db = writableDatabase
         db.beginTransaction()
+        // Autorización y escritura ven una operación consistente; no se confía solo en el estado de la UI.
         return try {
             val usuarios = leerUsuarios()
             val actor = usuarios.firstOrNull { it.correo == actorCorreo }
             val destino = usuarios.firstOrNull { it.correo == correo }
             if (!com.proyecto.acis.domain.PermisosUsuarios.puedeModificar(actor, destino, perfil, activo)) false
             else {
+                // Cambia solo rol y activación. Conserva correo, nombre, sal, hash y las órdenes asociadas.
                 val ok = db.update("usuarios", ContentValues().apply {
                     put("perfil", perfil.name); put("activo", if (activo) 1 else 0)
                 }, "correo = ?", arrayOf(correo)) == 1
                 if (ok) db.setTransactionSuccessful()
                 ok
             }
+        // Sin setTransactionSuccessful se revierte; finally libera la transacción incluso ante una excepción.
         } finally { db.endTransaction() }
     }
 
@@ -161,7 +167,7 @@ class OrdenesDb(context: Context, nombre: String = "acis_ordenes.db") : SQLiteOp
         }
     }
 
-    // Inserta una nueva orden en la base de datos
+    // insert devuelve el ID de fila o -1 ante un fallo; una excepción también se traduce a false.
     fun insertar(orden: OrdenTrabajo): Boolean = try {
         writableDatabase.insert("ordenes", null, valores(orden)) != -1L
     } catch (_: Exception) {
@@ -206,7 +212,8 @@ class OrdenesDb(context: Context, nombre: String = "acis_ordenes.db") : SQLiteOp
         }
     }
 
-    // Mapea un objeto OrdenTrabajo a ContentValues para operaciones SQLite
+    // Mapea propiedades Kotlin a columnas. apply permite llamar put sobre el mismo ContentValues.
+    // Los enums guardan name (identificador estable), no la etiqueta que ve el usuario.
     private fun valores(orden: OrdenTrabajo) = ContentValues().apply {
         put("id", orden.id)
         put("local", orden.local)

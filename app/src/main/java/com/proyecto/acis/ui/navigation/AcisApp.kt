@@ -53,6 +53,7 @@ fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
     if (usuario == null) {
         LoginScreen(viewModel, modifier)
     } else if (usuario.perfil == Perfil.ADMINISTRADOR) {
+        // El administrador tiene su propio inicio y no entra al navegador operativo de órdenes.
         key(usuario.correo) { com.proyecto.acis.ui.screens.usuarios.UsuariosScreen(viewModel, modifier) }
     } else {
         // Cambiar de cuenta descarta el navegador y los estados de la sesión anterior.
@@ -81,6 +82,7 @@ private fun AplicacionAutenticada(viewModel: OrdenesViewModel, modifier: Modifie
                     title = { Text(viewModel.usuario?.nombre.orEmpty()) },
                     // La navegación permanece visible aunque el formulario se desplace.
                     navigationIcon = {
+                        // En la lista principal no hay un destino anterior dentro de este navegador.
                         if (rutaActual != null && rutaActual != RutasAcis.ORDENES) {
                             TextButton(onClick = { navController.popBackStack() }, enabled = !viewModel.ocupado) {
                                 Text("Volver")

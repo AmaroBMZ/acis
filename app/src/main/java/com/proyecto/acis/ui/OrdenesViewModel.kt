@@ -32,18 +32,22 @@ class OrdenesViewModel(application: Application) : AndroidViewModel(application)
     private val repository = OrdenesRepository(application)
     val ordenes = repository.ordenes
     val usuarios = repository.usuarios
+    // El formulario de OT usa el catálogo actual de cuentas; no permite elegir clientes desactivados.
     val clientesActivos get() = usuarios.value.filter { it.activo && it.perfil == Perfil.CLIENTE }
 
+    // Coordina autorización, persistencia y respuesta del diálogo administrativo.
     fun actualizarAcceso(correo: String, perfil: Perfil, activo: Boolean, onResultado: (Boolean) -> Unit) = ejecutar {
         val actor = usuario
         val destino = usuarios.value.firstOrNull { it.correo == correo }
         val permitido = com.proyecto.acis.domain.PermisosUsuarios.puedeModificar(actor, destino, perfil, activo)
+        // && no ejecuta la escritura si la regla anterior falla; un permiso válido exige actor no nulo.
         val guardado = permitido && repository.actualizarAcceso(actor!!.correo, correo, perfil, activo)
         if (!guardado) errorGeneral = "No se pudo modificar el acceso. No puedes desactivar ni quitar tu propio rol administrador."
+        // La UI cierra el diálogo con true; con false mantiene el borrador y muestra el error.
         onResultado(guardado)
     }
 
-    // El perfil procede de la cuenta autenticada.
+    // El valor de respaldo no inicia sesión: los permisos comprueban usuario y rechazan null.
     val perfil: Perfil get() = usuario?.perfil ?: Perfil.PLANIFICADOR
 
     // Estado con los datos ingresados en el formulario de creación o edición
@@ -77,6 +81,7 @@ class OrdenesViewModel(application: Application) : AndroidViewModel(application)
 
     // Obtiene o crea el borrador local para una OT específica
     fun formularioDetalle(orden: OrdenTrabajo): FormularioDetalle =
+        // getOrPut toma los datos guardados solo la primera vez; después conserva lo que se está escribiendo.
         formulariosDetalle.getOrPut(orden.id) {
             FormularioDetalle(
                 diagnostico = orden.diagnostico,
@@ -327,6 +332,7 @@ class OrdenesViewModel(application: Application) : AndroidViewModel(application)
 
     // Solo una acción a la vez. El repositorio cambia a IO y el estado UI se actualiza en Main.
     private fun ejecutar(accion: suspend () -> Unit) {
+        // Una llamada mientras está ocupado se descarta y no ejecuta su callback.
         if (ocupado) return
         ocupado = true
         errorGeneral = null
@@ -334,6 +340,8 @@ class OrdenesViewModel(application: Application) : AndroidViewModel(application)
             try { accion() }
             // La cancelación del ciclo de vida se propaga; no se convierte en un error de negocio.
             catch (cancelada: CancellationException) { throw cancelada }
+            // Una excepción interrumpe accion: no se garantiza llegar a onResultado.
+            // Se publica el error general y finally habilita las acciones para reintentar.
             catch (_: Exception) { errorGeneral = "No se pudo completar la operación. Inténtalo nuevamente." }
             finally { ocupado = false }
         }
@@ -382,6 +390,7 @@ class OrdenesViewModel(application: Application) : AndroidViewModel(application)
         if (autorizado(id, Perfil.TECNICO)) iniciarVisitaInterno(id, ubicacion)
     }
     fun aprobar(id: String, onResultado: (Boolean) -> Unit = {}) = ejecutar {
+        // Solo comunica éxito cuando la cuenta tiene permiso y el repositorio confirma el cambio.
         val ok = autorizado(id, Perfil.CLIENTE) && aprobarInterno(id)
         if (!ok) errorGeneral = "No se pudo aprobar la orden."
         onResultado(ok)
@@ -393,12 +402,15 @@ class OrdenesViewModel(application: Application) : AndroidViewModel(application)
         onResultado(autorizado(id, Perfil.TECNICO) && guardarFotoInterno(id, nombre))
     }
     fun finalizarVisita(id: String, diagnostico: String, actividad: String, materiales: String, onResultado: (Boolean) -> Unit = {}) = ejecutar {
+        // Propaga tanto errores del formulario como fallos de guardado; ninguno debe cerrar la pantalla.
         onResultado(autorizado(id, Perfil.TECNICO) && finalizarVisitaInterno(id, diagnostico, actividad, materiales))
     }
     fun observar(id: String, observacion: String, onResultado: (Boolean) -> Unit = {}) = ejecutar {
+        // El callback evita navegar antes de que se registre la observación del cliente.
         onResultado(autorizado(id, Perfil.CLIENTE) && observarInterno(id, observacion))
     }
     fun responderObservacion(id: String, respuesta: String, onResultado: (Boolean) -> Unit = {}) = ejecutar {
+        // La pantalla vuelve al destino anterior únicamente cuando la respuesta quedó persistida.
         onResultado(autorizado(id, Perfil.TECNICO) && responderObservacionInterno(id, respuesta))
     }
 }

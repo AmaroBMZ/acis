@@ -55,13 +55,16 @@ internal fun EditarOrden(
     val keyboardController = LocalSoftwareKeyboardController.current
     val ahora = remember { Calendar.getInstance() }
 
-    // Carga el formulario al entrar a otra OT, sin sobrescribirlo en cada recomposición.
+    // Al entrar en composición o cambiar el ID copia la OT al formulario compartido del ViewModel.
+    // No se repite por cada recomposición, pero una nueva entrada en composición vuelve a cargarla.
     LaunchedEffect(orden.id) {
         viewModel.cargarParaEditar(orden)
     }
 
     val datos = viewModel.datosCrear
     val errores = viewModel.erroresCrear
+    // Los diálogos parten de la fecha actual; el texto visible procede de la OT cargada.
+    // Estos valores cambian al elegir en el diálogo, sin persistir hasta pulsar Actualizar OT.
     var dia by rememberSaveable { mutableStateOf(ahora.get(Calendar.DAY_OF_MONTH)) }
     var mes by rememberSaveable { mutableStateOf(ahora.get(Calendar.MONTH)) }
     var anio by rememberSaveable { mutableStateOf(ahora.get(Calendar.YEAR)) }
@@ -117,6 +120,7 @@ internal fun EditarOrden(
                             anio = nuevoAnio
                             mes = nuevoMes
                             dia = nuevoDia
+                            // DatePicker usa meses 0 a 11; el formulario almacena meses 1 a 12.
                             viewModel.cambiarFecha(String.format(
                                 Locale.forLanguageTag("es-CL"), "%02d/%02d/%04d", dia, mes + 1, anio,
                             ))
@@ -150,6 +154,7 @@ internal fun EditarOrden(
                         keyboardController?.hide()
                         viewModel.actualizarOt(orden.id) { actualizado ->
                             if (actualizado) {
+                                // Se solicita el aviso y se sale enseguida; su duración visible no está garantizada.
                                 toastExito = true
                                 onVolver()
                             }

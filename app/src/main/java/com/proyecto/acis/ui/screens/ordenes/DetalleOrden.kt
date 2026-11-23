@@ -68,6 +68,7 @@ internal fun DetalleOrden(
     onEditar: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    // Esta corutina pertenece a la pantalla: salir de composición cancela su búsqueda pendiente.
     val scopeUbicacion = rememberCoroutineScope()
     var buscandoUbicacion by rememberSaveable(orden.id) { mutableStateOf(false) }
     // Lanza la búsqueda sin bloquear la pantalla y pasa el resultado al inicio de visita.
@@ -93,6 +94,7 @@ internal fun DetalleOrden(
         fotoPendiente = ""
         if (nombre.isNotBlank()) {
             val archivo = File(File(context.filesDir, "evidencias"), nombre)
+            // guardada confirma la captura externa; guardado confirma la asociación en la base de datos.
             if (guardada) {
                 viewModel.guardarFoto(orden.id, nombre) { guardado ->
                     if (guardado) errorCamara = ""
@@ -155,6 +157,7 @@ internal fun DetalleOrden(
                         val archivo = File(File(context.filesDir, "evidencias"), orden.fotoEvidencia)
                         // Evita decodificar de nuevo la misma evidencia en cada recomposición.
                         val foto = remember(orden.fotoEvidencia) {
+                            // Decodifica una versión reducida para disminuir la memoria de la vista previa.
                             val opciones = BitmapFactory.Options().apply { inSampleSize = 4 }
                             BitmapFactory.decodeFile(archivo.path, opciones)?.asImageBitmap()
                         }
@@ -209,6 +212,7 @@ internal fun DetalleOrden(
                     try {
                         val carpeta = File(context.filesDir, "evidencias")
                         if (!carpeta.exists()) carpeta.mkdirs()
+                        // Cada captura tiene otro nombre: no sobrescribe la evidencia que aún está registrada.
                         val archivo = File(carpeta, "${orden.id}_${UUID.randomUUID()}.jpg")
                         archivo.createNewFile()
                         archivoNuevo = archivo

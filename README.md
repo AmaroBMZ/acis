@@ -30,7 +30,7 @@ El administrador consulta las cuentas, cambia sus roles y las activa o desactiva
 - **Check-in con ubicación aproximada**: Registro de llegada con captura puntual mediante `LocationManager.NETWORK_PROVIDER`. Si se deniega el permiso o no se obtiene ubicación, se registra la visita sin coordenadas.
 - **Fotografía de Evidencia**: Captura de fotografías en terreno utilizando la cámara nativa del sistema (`FileProvider`).
 - **Borrador de Visita**: Posibilidad de guardar avances parciales sin perder información.
-- **Informe Técnico & Check-out**: Formulario obligatorio para registrar diagnóstico, actividades ejecutadas y materiales utilizados al finalizar la visita.
+- **Informe Técnico & Check-out**: Exige diagnóstico y actividades ejecutadas al finalizar la visita; los materiales son opcionales.
 
 ### 3. Perfil Cliente
 - **Consulta de Estado**: Visualización de las órdenes pertenecientes a sus locales.
@@ -64,17 +64,29 @@ com.proyecto.acis/
 │   ├── OrdenesDb.kt             # Gestor de base de datos SQLite local
 │   ├── OrdenesRepository.kt     # Repositorio local con StateFlow
 │   ├── Usuario.kt               # Identidad, cuentas demo y derivación de contraseñas
-│   └── UbicacionCheckIn.kt      # Integración con GPS / LocationManager
+│   └── UbicacionCheckIn.kt      # Ubicación aproximada mediante LocationManager
 ├── domain/
 │   ├── PermisosOt.kt             # Acceso según rol e identidad de la cuenta
+│   ├── PermisosUsuarios.kt       # Administración de accesos y protección de la propia cuenta
 │   └── ValidadorOt.kt           # Reglas de validación desacopladas
 ├── ui/
 │   ├── theme/                   # Paleta M3 "Frío Ártico" (Color.kt, Theme.kt, Type.kt)
 │   ├── OrdenesViewModel.kt      # ViewModel con manejo de estado y filtros por perfil
 │   ├── LoginScreen.kt            # Formulario de inicio de sesión
-│   ├── components/SuccessToast.kt # Aviso visual de confirmación
-│   ├── navigation/              # AcisApp y rutas; barra fija con Volver y Salir
-│   └── screens/ordenes/          # Lista, creación, edición y detalle en archivos separados
+│   ├── components/
+│   │   ├── CamposOrden.kt       # Campos, selector de cliente, errores e indicadores compartidos
+│   │   └── SuccessToast.kt      # Aviso visual reutilizable
+│   ├── navigation/
+│   │   ├── AcisApp.kt           # Entrada por rol, destinos y barra fija
+│   │   └── RutasAcis.kt         # Nombres de rutas y construcción de destinos por ID
+│   └── screens/
+│       ├── ordenes/
+│       │   ├── ListaOrdenes.kt  # Búsqueda, filtros y tarjetas
+│       │   ├── CrearOrden.kt    # Formulario de creación
+│       │   ├── EditarOrden.kt   # Formulario de edición
+│       │   └── DetalleOrden.kt  # Visita, evidencia, informe y revisión
+│       └── usuarios/
+│           └── UsuariosScreen.kt # Lista de cuentas y diálogo de permisos
 └── MainActivity.kt              # Punto de entrada de la aplicación
 ```
 
@@ -116,15 +128,52 @@ La lista permite buscar por OT/local/equipo y filtrar por estado. Para cambiar d
 
 Aunque los archivos están bajo `src/main/java`, el código de la aplicación está escrito en **Kotlin** (`.kt`). Los comentarios explican responsabilidades, estado y decisiones dentro de cada bloque.
 
+### Revisión de comentarios del 23 de noviembre de 2026
+
+Se revisaron los archivos Kotlin de la aplicación y las pruebas, además de la configuración Gradle y el manifiesto. Se completaron comentarios sobre los formularios de creación/edición, cámara, navegación por ID, validación de clientes activos, migraciones, publicación de cambios y manejo de errores. Esta revisión modifica comentarios y documentación; no agrega funcionalidades ni constituye una nueva ejecución de pruebas.
+
+Los comentarios explican cada responsabilidad y los pasos que requieren razonamiento, sin repetir cada instrucción visual. Para seguir una acción, lee primero la pantalla, después su llamada al ViewModel y finalmente la regla de dominio y la operación del repositorio/base de datos.
+
+| Punto de lectura | Qué conviene distinguir |
+| --- | --- |
+| `CrearOrden.kt` y `EditarOrden.kt` | Estado de los diálogos, borrador del ViewModel y datos persistidos son cosas distintas. Android cuenta meses desde cero. |
+| `DetalleOrden.kt` | Capturar una foto y asociarla a una OT son dos resultados distintos; la cámara escribe el archivo y SQLite guarda su nombre. |
+| `OrdenesViewModel.kt` | Un resultado `false` o `null`, una excepción y una llamada descartada por `ocupado` siguen caminos diferentes. |
+| `OrdenesRepository.kt` y `OrdenesDb.kt` | Primero se guarda en SQLite y después se publica el estado en memoria; ambas operaciones no forman una única transacción. |
+| `PersistenciaTest.kt` | Las bases temporales simulan versiones anteriores y se abren con el esquema actual v6. |
+
 Orden recomendado de lectura:
 
 1. `data/OrdenTrabajo.kt` y `data/Usuario.kt`: qué representa una orden, qué datos conserva y cuáles son los perfiles disponibles.
-2. `domain/ValidadorOt.kt` y `domain/PermisosOt.kt`: qué datos se aceptan y quién puede consultar o modificar una orden.
+2. `domain/ValidadorOt.kt`, `domain/PermisosOt.kt` y `domain/PermisosUsuarios.kt`: validaciones y permisos separados para órdenes y administración de cuentas.
 3. `data/OrdenesDb.kt`: cómo se crean las tablas y cómo se convierten filas SQL en objetos Kotlin.
 4. `data/OrdenesRepository.kt`: cómo se guardan cambios, se controlan las transiciones de estado y se publica la lista actualizada.
 5. `ui/OrdenesViewModel.kt`: cómo se conectan sesión, formularios, validaciones y operaciones del repositorio.
 6. `MainActivity.kt`, `ui/LoginScreen.kt`, `ui/navigation/` y `ui/screens/ordenes/`: cómo arranca la aplicación, cómo se conectan los destinos y cómo las pantallas envían acciones.
 7. `ui/theme/` y `ui/components/`: colores, tipografía y componentes visuales compartidos.
+8. `ui/screens/usuarios/UsuariosScreen.kt`: cómo el administrador edita un borrador de permisos y espera la confirmación del guardado.
+
+### Recorrido de una acción: modificar el acceso de una cuenta
+
+1. El administrador selecciona **Modificar acceso**. La pantalla copia el rol y la activación al borrador del diálogo; todavía no modifica SQLite.
+2. **Guardar** llama a `OrdenesViewModel.actualizarAcceso`, que comprueba la identidad del actor y la cuenta de destino mediante `PermisosUsuarios`.
+3. `OrdenesRepository.actualizarAcceso` ejecuta la operación en `Dispatchers.IO`, protegida por `Mutex`.
+4. `OrdenesDb.actualizarAcceso` relee las cuentas y vuelve a comprobar los permisos dentro de una transacción. Solo modifica rol y activación; conserva la contraseña y los datos de las órdenes.
+5. Si se guarda, el repositorio recarga su `StateFlow` de usuarios y el callback devuelve `true`: se actualiza la lista y se cierra el diálogo. Si la operación devuelve `false`, el editor conserva el borrador y muestra el error. Si se lanza una excepción antes del callback, `ejecutar` la captura y publica `errorGeneral`, pero el diálogo administrativo no garantiza mostrarlo: su indicador `error` depende de ese callback.
+
+`actor` es quien solicita el cambio; `destino` es la cuenta modificada. Un administrador activo puede cambiar otras cuentas, pero no desactivarse ni quitarse su propio rol. Cambiar el rol de una cuenta no reasigna sus órdenes. El técnico de demostración solo puede recibir nuevas asignaciones si sigue activo y tiene rol técnico.
+
+### Navegación después de guardar
+
+| Acción | Comportamiento implementado tras confirmar el guardado |
+| --- | --- |
+| Crear OT | Cierra el formulario y vuelve a la lista. |
+| Editar OT | Vuelve al detalle anterior. |
+| Finalizar visita, aprobar, observar o responder | Vuelve a la pantalla anterior tras persistir. |
+| Modificar acceso de una cuenta | Cierra el diálogo y actualiza la tarjeta. |
+| Guardar borrador, capturar foto o iniciar visita | Permanece en el detalle para continuar trabajando. |
+
+La barra con **Volver** y **Salir** está fuera de la lista desplazable. En administración, **Salir** permanece fijo y **Cancelar** cierra el editor sin guardar. Durante una operación se bloquean las acciones de navegación correspondientes para evitar abandonar un guardado en curso.
 
 ### Recorrido de una acción: guardar una OT
 
@@ -156,6 +205,14 @@ Como analogía, la pantalla es el mostrador, el ViewModel coordina la solicitud,
 | Funciones como parámetros | `cambiar` recibe una transformación de la OT; los callbacks de pantalla reciben resultados o comunican acciones. |
 | `remember` y `rememberSaveable` | Conservan estado de interfaz entre recomposiciones; `rememberSaveable` también participa en la restauración de estado de Android. No reemplazan SQLite. |
 | `suspend`, IO y `Mutex` | Las tareas de persistencia se ejecutan fuera del hilo principal y el repositorio serializa el acceso a sus datos. |
+
+### Resultados, errores y estado temporal
+
+`OrdenesViewModel.ejecutar` permite una acción a la vez. Si `ocupado` ya es `true`, descarta la nueva llamada sin ejecutar su callback. Si la acción lanza una excepción, publica un mensaje general y libera `ocupado` en `finally`; no convierte automáticamente esa excepción en un resultado `false`. Una cancelación de corutina se propaga.
+
+En edición, `LaunchedEffect(orden.id)` carga la OT al entrar en composición o cambiar de ID. No sobrescribe el formulario en cada recomposición, pero una nueva entrada en composición vuelve a cargar los datos guardados. Los selectores de fecha/hora parten de la fecha actual, aunque el botón muestre la fecha almacenada de la OT, hasta que el usuario elige un valor.
+
+`SuccessToast` es un componente Compose controlado por `show`, no un Toast del sistema ni una confirmación de persistencia. Al actualizar una OT se activa y se navega inmediatamente hacia atrás; su duración visible no está garantizada.
 
 ## Ciclo de vida y permisos de una orden
 
@@ -209,11 +266,25 @@ Desde la raíz, con el JDK y SDK configurados para Gradle:
 | `app/src/test/.../PermisosOtTest.kt` | Acceso por identidad, ausencia de sesión y separación de roles. |
 | `app/src/test/.../PermisosUsuariosTest.kt` | Privilegios administrativos, cuentas inactivas y protección del propio acceso. |
 | `app/src/test/.../ClavesTest.kt` | Clave correcta/incorrecta y efecto de usar sales diferentes. |
-| `app/src/androidTest/.../PersistenciaTest.kt` | SQLite, reapertura, migración, ciclo de estados y borrado sin regenerar ejemplos. |
-| `app/src/androidTest/.../LoginNavegacionTest.kt` | Login, rechazo de credenciales, cambio de cuenta y búsqueda. |
+| `app/src/androidTest/.../PersistenciaTest.kt` | SQLite, reapertura, migraciones v4/v5, activación de cuentas, ciclo de estados y borrado sin regenerar ejemplos. |
+| `app/src/androidTest/.../LoginNavegacionTest.kt` | Login, administrador, cambio de cuenta, búsqueda, navegación fija y permanencia ante formularios inválidos. |
 | `app/src/androidTest/.../ExampleInstrumentedTest.kt` | Identificador de la aplicación debug instalada. |
 
 Las pruebas de persistencia utilizan bases temporales con nombres `test-<UUID>.db`. Los resultados históricos y las comprobaciones manuales pendientes están en [VALIDACION.md](docs/VALIDACION.md); no deben interpretarse como una nueva ejecución cada vez que se modifica la documentación.
+
+### Resultado registrado el 21 de noviembre de 2026
+
+- **23 pruebas unitarias JVM aprobadas**; compilación debug y análisis Android completados.
+- **12 casos instrumentados verificados en Samsung SM-S921B (Android 16):** 11 aprobaron en la ejecución completa y el caso de desplazamiento aprobó al repetirlo después de corregir su selector. No se ejecutó nuevamente toda la suite después de esa corrección.
+- Cámara, ubicación física y todos los cierres tras guardados exitosos conservan comprobaciones manuales pendientes.
+
+## Pendientes para la evaluación final
+
+Los cuatro roles implementados funcionan localmente. Todavía falta implementar el backend propio con microservicios y base de datos externa, conectar el CRUD remoto, completar registro/recuperación de contraseña/edición de perfil personal e integrar una API externa mediante Retrofit.
+
+También falta medir y alcanzar el 80 % de cobertura de lógica: el número de pruebas aprobadas no demuestra ese porcentaje. La APK disponible es debug; la entrega final requiere APK release firmado y documentación de endpoints, ejecución de servicios y firma.
+
+La revisión de comentarios también identifica pendientes de interfaz: mostrar el error administrativo cuando hay una excepción antes del callback, abrir los selectores de edición con la fecha/hora guardada y comprobar la visibilidad del aviso de éxito al navegar. Se documentan como comportamiento actual y puntos de mejora; no se corrigieron en esta revisión.
 
 **Pregunta para estudiar:** si la pantalla ya oculta los botones según el perfil, ¿por qué el ViewModel vuelve a comprobar los permisos y el repositorio comprueba además el estado de la OT?
 

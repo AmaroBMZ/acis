@@ -42,6 +42,7 @@ class LoginNavegacionTest {
     }
 
     @Test fun administradorAbreCuentasSinAccionesDeOrdenes() {
+        // Comprueba el destino de entrada administrativo y el retorno al login al cerrar sesión.
         entrar("admin@acis.cl")
         compose.waitUntil(20_000) { compose.onAllNodesWithText("Administrar cuentas").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Perfil activo: Administrador").assertExists()
