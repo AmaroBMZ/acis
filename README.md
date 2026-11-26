@@ -47,7 +47,7 @@ Las OT todavía identifican al técnico por nombre y asignan nuevas órdenes al 
 
 - **Lenguaje**: Kotlin
 - **UI**: Jetpack Compose con **Material Design 3**
-- **Arquitectura**: MVVM (Model-View-ViewModel) con separación en paquetes `ui`, `domain` y `data`. Es una separación por responsabilidades; el dominio todavía depende de modelos y cuentas definidos en `data`.
+- **Arquitectura**: MVVM (Model-View-ViewModel) con separación en paquetes `ui`, `domain` y `data`. Sesión, órdenes y administración de cuentas tienen ViewModels separados; las cuentas cuentan con contrato propio. La separación por capas es parcial: el dominio todavía depende de modelos definidos en `data` y la persistencia de cuentas y órdenes sigue concentrada en `OrdenesRepository` y `OrdenesDb`.
 - **Persistencia Local**: Base de datos **SQLite** (`SQLiteOpenHelper`) para soporte offline
 - **Corutinas**: `viewModelScope`, `Dispatchers.IO` y `Mutex` para operaciones de persistencia sin bloquear la interfaz.
 - **Acceso local**: usuarios en SQLite, contraseñas derivadas con sal y permisos por rol y propietario de la OT.
@@ -68,16 +68,20 @@ com.proyecto.acis/
 │   ├── OrdenesDb.kt             # Gestor de base de datos SQLite local
 │   ├── OrdenesRepository.kt     # Repositorio local con StateFlow
 │   ├── AutenticacionLocalRepository.kt # Adaptador al acceso SQLite existente
+│   ├── UsuariosLocalRepository.kt # Adaptador de cuentas al repositorio compartido
 │   ├── Usuario.kt               # Identidad, cuentas demo y derivación de contraseñas
 │   └── UbicacionCheckIn.kt      # Ubicación aproximada mediante LocationManager
 ├── domain/
 │   ├── AutenticacionRepository.kt # Contrato de preparación y autenticación
+│   ├── UsuariosRepository.kt      # Contrato de cuentas y resultados del registro
+│   ├── ValidadorUsuario.kt        # Validación y normalización del alta de cuentas
 │   ├── PermisosOt.kt             # Acceso según rol e identidad de la cuenta
 │   ├── PermisosUsuarios.kt       # Administración de accesos y protección de la propia cuenta
 │   └── ValidadorOt.kt           # Reglas de validación desacopladas
 ├── ui/
 │   ├── theme/                   # Paleta M3 "Frío Ártico" (Color.kt, Theme.kt, Type.kt)
-│   ├── OrdenesViewModel.kt      # Órdenes y administración de cuentas aún pendiente de separar
+│   ├── OrdenesViewModel.kt      # Formularios, permisos y operaciones de órdenes
+│   ├── UsuariosViewModel.kt     # Registro, permisos y errores de administración de cuentas
 │   ├── SesionViewModel.kt       # Carga de acceso, login, logout y sus errores
 │   ├── LoginScreen.kt            # Formulario de inicio de sesión
 │   ├── components/
@@ -93,7 +97,8 @@ com.proyecto.acis/
 │       │   ├── EditarOrden.kt   # Formulario de edición
 │       │   └── DetalleOrden.kt  # Visita, evidencia, informe y revisión
 │       └── usuarios/
-│           └── UsuariosScreen.kt # Lista de cuentas y diálogo de permisos
+│           ├── UsuariosScreen.kt # Lista de cuentas y diálogo de permisos
+│           └── RegistroUsuarioDialog.kt # Formulario de alta administrativa
 ├── session/SesionActual.kt      # Identidad única compartida en memoria
 ├── AcisApplication.kt           # Construcción de dependencias y fábrica de ViewModels
 └── MainActivity.kt              # Punto de entrada de la aplicación
@@ -166,21 +171,21 @@ Los comentarios explican cada responsabilidad y los pasos que requieren razonami
 Orden recomendado de lectura:
 
 1. `data/OrdenTrabajo.kt` y `data/Usuario.kt`: qué representa una orden, qué datos conserva y cuáles son los perfiles disponibles.
-2. `domain/ValidadorOt.kt`, `domain/PermisosOt.kt` y `domain/PermisosUsuarios.kt`: validaciones y permisos separados para órdenes y administración de cuentas.
+2. `domain/ValidadorOt.kt`, `domain/ValidadorUsuario.kt`, `domain/PermisosOt.kt` y `domain/PermisosUsuarios.kt`: validaciones y permisos separados para órdenes y administración de cuentas.
 3. `data/OrdenesDb.kt`: cómo se crean las tablas y cómo se convierten filas SQL en objetos Kotlin.
 4. `data/OrdenesRepository.kt`: cómo se guardan cambios, se controlan las transiciones de estado y se publica la lista actualizada.
-5. `ui/SesionViewModel.kt` y `session/SesionActual.kt`: acceso e identidad compartida; `ui/OrdenesViewModel.kt`: formularios, permisos y operaciones del repositorio.
+5. `ui/SesionViewModel.kt` y `session/SesionActual.kt`: acceso e identidad compartida; `ui/OrdenesViewModel.kt`: operaciones de órdenes; `ui/UsuariosViewModel.kt`: administración mediante `domain/UsuariosRepository.kt` y su adaptador `data/UsuariosLocalRepository.kt`.
 6. `MainActivity.kt`, `ui/LoginScreen.kt`, `ui/navigation/` y `ui/screens/ordenes/`: cómo arranca la aplicación, cómo se conectan los destinos y cómo las pantallas envían acciones.
 7. `ui/theme/` y `ui/components/`: colores, tipografía y componentes visuales compartidos.
-8. `ui/screens/usuarios/UsuariosScreen.kt`: cómo el administrador edita un borrador de permisos y espera la confirmación del guardado.
+8. `ui/screens/usuarios/UsuariosScreen.kt` y `RegistroUsuarioDialog.kt`: cómo el administrador modifica permisos o registra cuentas y espera la confirmación del guardado.
 
 ### Recorrido de una acción: modificar el acceso de una cuenta
 
 1. El administrador selecciona **Modificar acceso**. La pantalla copia el rol y la activación al borrador del diálogo; todavía no modifica SQLite.
 2. **Guardar** llama a `UsuariosViewModel.actualizarAcceso`, que comprueba la identidad del actor y la cuenta de destino mediante `PermisosUsuarios`.
-3. `OrdenesRepository.actualizarAcceso` ejecuta la operación en `Dispatchers.IO`, protegida por `Mutex`.
+3. `UsuariosRepository.actualizarAcceso` pasa por `UsuariosLocalRepository` y delega en `OrdenesRepository.actualizarAcceso`, que ejecuta la operación en `Dispatchers.IO`, protegida por `Mutex`.
 4. `OrdenesDb.actualizarAcceso` relee las cuentas y vuelve a comprobar los permisos dentro de una transacción. Solo modifica rol y activación; conserva la contraseña y los datos de las órdenes.
-5. Si se guarda, el repositorio recarga su `StateFlow` de usuarios y el callback devuelve `true`: se actualiza la lista y se cierra el diálogo. Si la operación devuelve `false`, el editor conserva el borrador y muestra el error. Si se lanza una excepción antes del callback, `ejecutar` la captura y publica `errorGeneral`, pero el diálogo administrativo no garantiza mostrarlo: su indicador `error` depende de ese callback.
+5. Si se guarda, el repositorio recarga su `StateFlow` de usuarios y el callback devuelve `true`: se actualiza la lista y se cierra el diálogo. Si la operación devuelve `false`, el editor conserva el borrador y muestra el error. Ante una excepción de la operación, `UsuariosViewModel.ejecutar` publica `errorGeneral`, libera `ocupado` y llama al callback con `false`; el diálogo activa su indicador `error` y muestra el mensaje. La cancelación de corutina se propaga. Este manejo ya está implementado; su comprobación visual ante un fallo de guardado sigue pendiente.
 
 `actor` es quien solicita el cambio; `destino` es la cuenta modificada. Un administrador activo puede cambiar otras cuentas, pero no desactivarse ni quitarse su propio rol. Cambiar el rol de una cuenta no reasigna sus órdenes. El técnico de demostración solo puede recibir nuevas asignaciones si sigue activo y tiene rol técnico.
 
@@ -250,7 +255,7 @@ En edición, `LaunchedEffect(orden.id)` carga la OT al entrar en composición o 
 
 El ViewModel comprueba identidad y rol mediante `PermisosOt`. El repositorio comprueba el estado requerido y SQLite condiciona la actualización al estado anterior. Son controles distintos: poder ver una orden no autoriza cualquier acción sobre ella.
 
-El planificador puede crear, editar y eliminar órdenes. La implementación actual no restringe la edición o eliminación a un estado particular. La asignación usa el técnico de demostración fijo; no existe un catálogo editable de técnicos.
+El planificador puede crear, editar y eliminar órdenes. La implementación actual no restringe la edición o eliminación a un estado particular. El administrador puede registrar técnicos, pero la asignación sigue usando el técnico de demostración fijo: falta adaptar ese flujo para seleccionar técnicos creados desde la app. Las cuentas pueden desactivarse, pero no borrarse.
 
 ## Persistencia, formularios y recursos del dispositivo
 
@@ -271,11 +276,14 @@ Los datos se gestionan localmente: no hay backend ni sincronización de órdenes
 Desde la raíz, con el JDK y SDK configurados para Gradle:
 
 ```powershell
-# Pruebas de reglas y contraseñas en la JVM.
+# Pruebas de reglas, contraseñas y ViewModels en la JVM.
 .\gradlew.bat :app:testDebugUnitTest
 
 # Compilación del APK debug y análisis estático Android.
 .\gradlew.bat :app:assembleDebug :app:lintDebug
+
+# Compila las pruebas instrumentadas; no las ejecuta.
+.\gradlew.bat :app:assembleDebugAndroidTest
 
 # Requiere emulador o dispositivo conectado.
 .\gradlew.bat :app:connectedDebugAndroidTest
@@ -288,32 +296,41 @@ Desde la raíz, con el JDK y SDK configurados para Gradle:
 | `app/src/test/.../PermisosUsuariosTest.kt` | Privilegios administrativos, cuentas inactivas y protección del propio acceso. |
 | `app/src/test/.../ClavesTest.kt` | Clave correcta/incorrecta y efecto de usar sales diferentes. |
 | `app/src/test/.../SesionViewModelTest.kt` | Carga y autenticación con fallos/reintentos, identidad compartida, cuenta inactiva, llamadas duplicadas y logout mediante un repositorio simulado. |
-| `app/src/androidTest/.../PersistenciaTest.kt` | SQLite, reapertura, migraciones v4/v5, activación de cuentas, ciclo de estados y borrado sin regenerar ejemplos. |
-| `app/src/androidTest/.../LoginNavegacionTest.kt` | Login, administrador, cambio de cuenta, búsqueda, navegación fija y permanencia ante formularios inválidos. |
+| `app/src/test/.../UsuariosViewModelTest.kt` | Normalización, doble envío, validación del registro, permisos, correo duplicado, excepción con callback de fallo y reintento, protección del propio acceso y límites de validación. |
+| `app/src/androidTest/.../PersistenciaTest.kt` | SQLite, reapertura, migraciones v4/v5, activación de cuentas, ciclo de estados y borrado sin regenerar ejemplos; incorpora registro con autorización, normalización y persistencia sin reemplazar cuentas. |
+| `app/src/androidTest/.../LoginNavegacionTest.kt` | Login, administrador, cambio de cuenta, búsqueda, navegación fija, permanencia ante formularios inválidos y logout con limpieza de borradores y conservación de órdenes. |
 | `app/src/androidTest/.../ExampleInstrumentedTest.kt` | Identificador de la aplicación debug instalada. |
 
 Las pruebas de persistencia utilizan bases temporales con nombres `test-<UUID>.db`. Los resultados históricos y las comprobaciones manuales pendientes están en [VALIDACION.md](docs/VALIDACION.md); no deben interpretarse como una nueva ejecución cada vez que se modifica la documentación.
 
-### Resultado registrado el 21 de noviembre de 2026
+### Resultados históricos: 21 de noviembre de 2026
 
 - **23 pruebas unitarias JVM aprobadas**; compilación debug y análisis Android completados.
 - **12 casos instrumentados verificados en Samsung SM-S921B (Android 16):** 11 aprobaron en la ejecución completa y el caso de desplazamiento aprobó al repetirlo después de corregir su selector. No se ejecutó nuevamente toda la suite después de esa corrección.
 - Cámara, ubicación física y todos los cierres tras guardados exitosos conservan comprobaciones manuales pendientes.
 
-### Verificación de la separación de sesión, 26 de noviembre de 2026
+### Resultados de la separación de sesión y gestión local de cuentas: 26 de noviembre de 2026
 
 - **28 pruebas JVM aprobadas**, incluidas 5 de `SesionViewModel` con una implementación simulada del contrato de autenticación.
 - APK debug y APK de pruebas Android compilados; lint con 0 errores y 18 advertencias (más 10 sugerencias).
 - Se agregó un caso de UI para logout, limpieza de borradores y conservación de órdenes. Está compilado, **no ejecutado**: no había dispositivos conectados a ADB.
-- La cobertura del 80 % sigue pendiente de medición. La separación de administración de usuarios y contratos de órdenes sigue pendiente.
+- La compilación posterior también incluyó los nuevos casos de registro y confirmación de salida. Las pruebas JVM y lint pasaron; las pruebas instrumentadas compilaron, pero todavía no se ejecutaron en emulador o dispositivo. La cobertura porcentual sigue pendiente de medición.
+
+### Estado de las pruebas de administración y registro
+
+- Se agregaron 7 casos JVM en `UsuariosViewModelTest.kt`, además de registro persistente en `PersistenciaTest.kt` y casos de cancelación y confirmación de salida en `LoginNavegacionTest.kt`.
+- Los casos JVM se ejecutaron correctamente. El caso instrumentado de registro, la cancelación de salida y los recorridos de los cuatro roles compilaron, pero **requieren ejecución en emulador o dispositivo**; compilar el APK no confirma sus resultados.
+- Falta medir la cobertura de lógica y contrastarla con el **80 % exigido por la pauta**. Tener pruebas aprobadas no acredita por sí solo ese porcentaje.
 
 ## Pendientes para la evaluación final
 
-Los cuatro roles y el registro administrativo están implementados localmente. Todavía falta implementar el backend propio con microservicios y base de datos externa, conectar el CRUD remoto, completar recuperación de contraseña/edición de perfil personal e integrar una API externa mediante Retrofit.
+Los cuatro roles y el registro administrativo están implementados localmente. Recuperación de contraseña, edición del perfil propio, backend propio con microservicios y base de datos externa, CRUD remoto y API externa mediante Retrofit quedan para una etapa posterior, según lo acordado.
+
+La administración de cuentas tiene `UsuariosViewModel` y `UsuariosRepository`, aunque ambos flujos aún comparten internamente `OrdenesRepository` y `OrdenesDb`; esa separación de persistencia y el contrato de órdenes pueden abordarse después. El administrador desactiva cuentas, pero no las borra. También falta cambiar el flujo de asignación para elegir técnicos registrados desde la app en lugar del técnico de demostración.
 
 También falta medir y alcanzar el 80 % de cobertura de lógica: el número de pruebas aprobadas no demuestra ese porcentaje. La APK disponible es debug; la entrega final requiere APK release firmado y documentación de endpoints, ejecución de servicios y firma.
 
-La revisión de comentarios también identifica pendientes de interfaz: mostrar el error administrativo cuando hay una excepción antes del callback, abrir los selectores de edición con la fecha/hora guardada y comprobar la visibilidad del aviso de éxito al navegar. Se documentan como comportamiento actual y puntos de mejora; no se corrigieron en esta revisión.
+En interfaz sigue pendiente abrir los selectores de edición con la fecha/hora guardada y comprobar la visibilidad del aviso de éxito al navegar. El manejo del error administrativo ante excepciones ya se incorporó en `UsuariosViewModel`: notifica el fallo al callback y permite mostrar el mensaje sin cerrar el diálogo. Falta verificar visualmente ese recorrido; ya no se lista como una corrección de código pendiente.
 
 **Pregunta para estudiar:** si la pantalla ya oculta los botones según el perfil, ¿por qué el ViewModel vuelve a comprobar los permisos y el repositorio comprueba además el estado de la OT?
 

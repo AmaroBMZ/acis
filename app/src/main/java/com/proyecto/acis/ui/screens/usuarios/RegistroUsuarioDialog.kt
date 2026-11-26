@@ -17,6 +17,7 @@ import com.proyecto.acis.ui.UsuariosViewModel
 /** Borrador local del alta: cancelar no escribe; las claves no se guardan en el estado restaurable. */
 @Composable
 fun RegistroUsuarioDialog(viewModel: UsuariosViewModel, onCerrar: () -> Unit) {
+    // Datos no secretos sobreviven a una recreación; las contraseñas se mantienen solo en memoria.
     var nombre by rememberSaveable { mutableStateOf("") }
     var correo by rememberSaveable { mutableStateOf("") }
     var rol by rememberSaveable { mutableStateOf(Perfil.CLIENTE.name) }
@@ -27,6 +28,7 @@ fun RegistroUsuarioDialog(viewModel: UsuariosViewModel, onCerrar: () -> Unit) {
         onDismissRequest = { if (!viewModel.ocupado) onCerrar() },
         title = { Text("Registrar usuario") },
         text = {
+            // El contenido se desplaza para que todos los campos sigan accesibles con el teclado abierto.
             Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("La cuenta quedará activa. Entrega la contraseña inicial al usuario para que pueda ingresar.")
                 CampoRegistro("Nombre completo", nombre, { nombre = it }, viewModel.errores["nombre"], !viewModel.ocupado)
@@ -45,6 +47,7 @@ fun RegistroUsuarioDialog(viewModel: UsuariosViewModel, onCerrar: () -> Unit) {
         },
         confirmButton = {
             TextButton(enabled = !viewModel.ocupado, onClick = {
+                // El diálogo se cierra solo tras confirmar el guardado; un fallo conserva lo ingresado.
                 viewModel.registrar(nombre, correo, Perfil.valueOf(rol), clave, confirmacion) { creado ->
                     if (creado) { clave = ""; confirmacion = ""; onCerrar() }
                 }
