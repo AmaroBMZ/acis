@@ -1,5 +1,17 @@
 # Validación de la rama
 
+## Separación inicial de sesión (26 de noviembre de 2026)
+
+- Se separó `SesionViewModel` del ViewModel de órdenes, con `AutenticacionRepository` recibido por constructor y una identidad compartida en `SesionActual`.
+- SQLite conserva el esquema v6, las cuentas, claves y órdenes. La autenticación utiliza un adaptador al repositorio existente; usuarios y órdenes aún no están separados completamente.
+- **28 pruebas JVM aprobadas**, sin fallos ni errores: 23 existentes y 5 de sesión con una fuente simulada. Cubren carga fallida, reintento, credenciales rechazadas, cuenta inactiva, excepción, identidad compartida, llamadas duplicadas y logout.
+- `assembleDebug` y `assembleDebugAndroidTest`: correctos. La compilación de pruebas Android se repitió después de agregar limpieza de sesión entre casos.
+- `lintDebug`: 0 errores, 18 advertencias y 10 sugerencias. `git diff --check`: sin errores.
+- No se ejecutaron pruebas instrumentadas: ADB no detectó dispositivos. El nuevo caso `salirLimpiaBorradoresYConservaOrdenesGuardadas` está compilado, pero su recorrido en UI sigue pendiente, al igual que cámara y ubicación física.
+- La cobertura porcentual no fue medida en esta etapa; 28 casos aprobados no acreditan el 80 %.
+
+Comandos ejecutados: `:app:testDebugUnitTest`, `:app:assembleDebug`, `:app:assembleDebugAndroidTest`, `:app:lintDebug`.
+
 ## Verificación en teléfono Samsung (21 de noviembre de 2026)
 
 La variante `com.proyecto.acis.pruebas` se actualizó con `adb install -r` en el Samsung SM-S921B con Android 16. Se ejecutaron los 12 casos instrumentados: inicialmente aprobaron 11 y falló el selector de desplazamiento del caso nuevo de navegación.

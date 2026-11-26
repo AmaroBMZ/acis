@@ -17,7 +17,7 @@ import com.proyecto.acis.ui.OrdenesViewModel
 /** Administración local de accesos. La lista nunca recibe hashes ni contraseñas. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UsuariosScreen(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
+fun UsuariosScreen(viewModel: OrdenesViewModel, onSalir: () -> Unit, modifier: Modifier = Modifier) {
     // Observa la lista publicada después de leer o actualizar SQLite; Compose redibuja las tarjetas.
     val usuarios by viewModel.usuarios.collectAsState()
     // El correo identifica la cuenta seleccionada. null significa que no hay un diálogo abierto.
@@ -35,7 +35,7 @@ fun UsuariosScreen(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
     // La barra superior queda fuera de LazyColumn: Salir permanece visible al desplazarse.
     Scaffold(modifier = modifier.fillMaxSize(), topBar = {
         TopAppBar(title = { Text("Administrar cuentas") }, actions = {
-            TextButton(onClick = viewModel::cerrarSesion, enabled = !viewModel.ocupado) { Text("Salir") }
+            TextButton(onClick = onSalir, enabled = !viewModel.ocupado) { Text("Salir") }
         })
     }) { padding ->
         // Aplica el espacio reservado por la barra para que no tape las primeras cuentas.

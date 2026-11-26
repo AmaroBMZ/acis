@@ -14,7 +14,8 @@ import androidx.compose.ui.unit.dp
 
 // Pantalla de acceso local: recoge credenciales y delega la autenticación al ViewModel.
 @Composable
-fun LoginScreen(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
+fun LoginScreen(viewModel: SesionViewModel, modifier: Modifier = Modifier) {
+    val estado by viewModel.estado.collectAsState()
     // rememberSaveable conserva el correo ante recreaciones de la actividad.
     var correo by rememberSaveable { mutableStateOf("") }
     // La contraseña no se guarda en el estado persistente de Android.
@@ -33,15 +34,15 @@ fun LoginScreen(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth())
         // Muestra errores y progreso publicados por el ViewModel.
-        viewModel.errorGeneral?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        if (viewModel.ocupado) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        estado.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        if (estado.ocupado) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         // Permite reintentar si la carga inicial no se completó.
-        if (!viewModel.cargado) {
-            Button(onClick = viewModel::cargar, enabled = !viewModel.ocupado) { Text("Reintentar carga") }
+        if (!estado.cargado) {
+            Button(onClick = viewModel::cargar, enabled = !estado.ocupado) { Text("Reintentar carga") }
         }
         // Ingresar requiere datos cargados, campos completos y ninguna operación en curso.
         Button(onClick = { viewModel.iniciarSesion(correo, clave) },
-            enabled = viewModel.cargado && !viewModel.ocupado && correo.isNotBlank() && clave.isNotBlank(),
+            enabled = estado.cargado && !estado.ocupado && correo.isNotBlank() && clave.isNotBlank(),
             modifier = Modifier.fillMaxWidth()) { Text("Ingresar") }
         Text("Cuentas de prueba", style = MaterialTheme.typography.titleMedium)
         Text("admin@acis.cl")

@@ -10,6 +10,50 @@ import org.junit.Test
 class LoginNavegacionTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
+    @org.junit.Before fun comenzarSinSesion() {
+        // Application vive entre casos: cada prueba comienza con identidad y borradores limpios.
+        lateinit var acceso: com.proyecto.acis.ui.SesionViewModel
+        lateinit var ordenes: com.proyecto.acis.ui.OrdenesViewModel
+        compose.runOnIdle {
+            val proveedor = androidx.lifecycle.ViewModelProvider(compose.activity)
+            acceso = proveedor[com.proyecto.acis.ui.SesionViewModel::class.java]
+            ordenes = proveedor[com.proyecto.acis.ui.OrdenesViewModel::class.java]
+        }
+        compose.waitUntil(20_000) { !acceso.estado.value.ocupado && !ordenes.ocupado }
+        compose.runOnIdle {
+            ordenes.limpiarBorradores()
+            acceso.cerrarSesion()
+        }
+    }
+
+    // Usa el botón real de salida y comprueba que no quedan borradores para la siguiente cuenta.
+    @Test fun salirLimpiaBorradoresYConservaOrdenesGuardadas() {
+        entrar("planificador@acis.cl")
+        compose.waitUntil(20_000) { compose.onAllNodesWithText("Salir").fetchSemanticsNodes().isNotEmpty() }
+        lateinit var vm: com.proyecto.acis.ui.OrdenesViewModel
+        lateinit var orden: com.proyecto.acis.data.OrdenTrabajo
+        var cantidad = 0
+        compose.runOnIdle {
+            vm = androidx.lifecycle.ViewModelProvider(compose.activity)[com.proyecto.acis.ui.OrdenesViewModel::class.java]
+            cantidad = vm.ordenes.value.size
+            orden = com.proyecto.acis.data.OrdenTrabajo("OT-BORRADOR-TEST", "Local", "Equipo", "Trabajo", "26/11/2026 10:00")
+            vm.cambiarLocal("Borrador que debe desaparecer")
+            vm.formularioDetalle(orden)
+            vm.cambiarDiagnostico(orden.id, "Texto sin guardar")
+        }
+        compose.onNodeWithText("Salir").performClick()
+        compose.onNodeWithText("Ingresa a tu cuenta").assertExists()
+        compose.runOnIdle {
+            org.junit.Assert.assertNull(vm.usuario)
+            org.junit.Assert.assertEquals("", vm.datosCrear.local)
+            org.junit.Assert.assertEquals("", vm.formularioDetalle(orden).diagnostico)
+            org.junit.Assert.assertEquals(cantidad, vm.ordenes.value.size)
+        }
+        entrar("cliente2@acis.cl")
+        compose.waitUntil(20_000) { compose.onAllNodesWithText("Perfil activo: Cliente").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("+").assertDoesNotExist()
+    }
+
     // Rellena credenciales y espera a que la carga habilite el ingreso.
     private fun entrar(correo: String, clave: String = CuentasPrueba.CLAVE) {
         compose.onNodeWithText("Correo").performTextReplacement(correo)

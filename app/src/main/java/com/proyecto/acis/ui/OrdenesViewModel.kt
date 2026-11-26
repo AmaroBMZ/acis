@@ -1,15 +1,14 @@
 package com.proyecto.acis.ui
 
-import android.app.Application
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
+import com.proyecto.acis.session.SesionActual
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Job
 import com.proyecto.acis.data.Usuario
 import com.proyecto.acis.domain.PermisosOt
 import com.proyecto.acis.data.EstadoOt
@@ -27,9 +26,12 @@ import com.proyecto.acis.domain.ValidadorOt
  * ViewModel que gestiona el estado de la UI y coordina las acciones del usuario
  * con la capa de repositorio y validación de dominio.
  */
-class OrdenesViewModel(application: Application) : AndroidViewModel(application) {
-    // Repositorio que maneja la persistencia de las OTs
-    private val repository = OrdenesRepository(application)
+class OrdenesViewModel(
+    private val repository: OrdenesRepository,
+    private val sesion: SesionActual,
+) : ViewModel() {
+    // Consulta la identidad compartida; este ViewModel no autentica ni conserva otra copia.
+    val usuario: Usuario? get() = sesion.usuario.value
     val ordenes = repository.ordenes
     val usuarios = repository.usuarios
     // El formulario de OT usa el catálogo actual de cuentas; no permite elegir clientes desactivados.
@@ -275,42 +277,16 @@ class OrdenesViewModel(application: Application) : AndroidViewModel(application)
         if (guardado) ordenRespuestaConError = null
         return guardado
     }
-    // Estado de sesión observable; private set permite leer desde la UI, pero escribir solo aquí.
-    var usuario by mutableStateOf<Usuario?>(null)
-        private set
     // Evita lanzar otra operación mientras una acción del ViewModel sigue en curso.
     var ocupado by mutableStateOf(false)
         private set
-    // Distingue una carga inicial completada de una lista legítimamente vacía.
-    var cargado by mutableStateOf(false)
-        private set
-    // Mensaje compartido para fallos de carga, autenticación o acciones.
+    // Mensaje para fallos de las operaciones de órdenes y administración aún no separada.
     var errorGeneral by mutableStateOf<String?>(null)
         private set
 
-    init {
-        // Cierra SQLite al terminar el ViewModel, después de que terminen sus corutinas.
-        viewModelScope.coroutineContext[Job]?.invokeOnCompletion { repository.cerrar() }
-        cargar()
-    }
-
-    // Carga SQLite y los datos iniciales antes de permitir el acceso.
-    fun cargar() = ejecutar {
-        repository.cargar()
-        cargado = true
-    }
-
-    // Autentica contra las cuentas locales y publica el usuario para que Compose cambie de pantalla.
-    fun iniciarSesion(correo: String, clave: String) = ejecutar {
-        if (!cargado) { errorGeneral = "Primero carga los datos."; return@ejecutar }
-        usuario = repository.autenticar(correo, clave)
-        if (usuario == null) errorGeneral = "Correo o contraseña incorrectos."
-    }
-
-    // Descarta identidad, borradores y errores de la sesión; conserva las órdenes persistidas.
-    fun cerrarSesion() {
+    // Descarta solo estado de trabajo; la identidad la borra SesionViewModel después de esta limpieza.
+    fun limpiarBorradores() {
         if (ocupado) return
-        usuario = null
         nuevoFormulario()
         formulariosDetalle.clear()
         mensajeDetalle = null

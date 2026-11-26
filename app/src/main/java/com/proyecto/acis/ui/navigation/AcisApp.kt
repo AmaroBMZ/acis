@@ -40,6 +40,7 @@ import androidx.navigation.navArgument
 import com.proyecto.acis.data.Perfil
 import com.proyecto.acis.ui.LoginScreen
 import com.proyecto.acis.ui.OrdenesViewModel
+import com.proyecto.acis.ui.SesionViewModel
 import com.proyecto.acis.ui.screens.ordenes.*
 import com.proyecto.acis.ui.components.OrdenNoDisponible
 
@@ -48,23 +49,30 @@ import com.proyecto.acis.ui.components.OrdenNoDisponible
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AcisApp(viewModel: OrdenesViewModel, modifier: Modifier = Modifier) {
-    val usuario = viewModel.usuario
+fun AcisApp(viewModel: OrdenesViewModel, sesionViewModel: SesionViewModel, modifier: Modifier = Modifier) {
+    val usuario by sesionViewModel.usuario.collectAsState()
+    // Coordina la salida sin acoplar los ViewModels entre sí. No abandona una escritura en curso.
+    val salir: () -> Unit = {
+        if (!viewModel.ocupado && !sesionViewModel.estado.value.ocupado) {
+            viewModel.limpiarBorradores()
+            sesionViewModel.cerrarSesion()
+        }
+    }
     if (usuario == null) {
-        LoginScreen(viewModel, modifier)
-    } else if (usuario.perfil == Perfil.ADMINISTRADOR) {
+        LoginScreen(sesionViewModel, modifier)
+    } else if (usuario?.perfil == Perfil.ADMINISTRADOR) {
         // El administrador tiene su propio inicio y no entra al navegador operativo de órdenes.
-        key(usuario.correo) { com.proyecto.acis.ui.screens.usuarios.UsuariosScreen(viewModel, modifier) }
+        key(usuario?.correo) { com.proyecto.acis.ui.screens.usuarios.UsuariosScreen(viewModel, salir, modifier) }
     } else {
         // Cambiar de cuenta descarta el navegador y los estados de la sesión anterior.
-        key(usuario.correo) { AplicacionAutenticada(viewModel, modifier) }
+        key(usuario?.correo) { AplicacionAutenticada(viewModel, salir, modifier) }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 // Organiza barra superior, navegación y acciones de la sesión activa.
-private fun AplicacionAutenticada(viewModel: OrdenesViewModel, modifier: Modifier) {
+private fun AplicacionAutenticada(viewModel: OrdenesViewModel, onSalir: () -> Unit, modifier: Modifier) {
     val navController = rememberNavController()
     // collectAsState convierte el StateFlow en estado Compose: una nueva lista actualiza la UI.
     val ordenes by viewModel.ordenes.collectAsState()
@@ -89,7 +97,7 @@ private fun AplicacionAutenticada(viewModel: OrdenesViewModel, modifier: Modifie
                             }
                         }
                     },
-                    actions = { TextButton(onClick = viewModel::cerrarSesion, enabled = !viewModel.ocupado) { Text("Salir") } },
+                    actions = { TextButton(onClick = onSalir, enabled = !viewModel.ocupado) { Text("Salir") } },
                 )
                 viewModel.errorGeneral?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(12.dp)) }
                 if (viewModel.ocupado) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())

@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModelProvider
 import com.proyecto.acis.ui.navigation.AcisApp
 import com.proyecto.acis.ui.OrdenesViewModel
+import com.proyecto.acis.ui.SesionViewModel
 import com.proyecto.acis.ui.theme.AcisTheme
 
 // Android crea esta actividad al abrir la app; aquí se conecta el ciclo de vida con Compose.
@@ -21,12 +22,15 @@ class MainActivity : ComponentActivity() {
         // Permite dibujar hasta los bordes; el padding del Scaffold respeta las barras del sistema.
         enableEdgeToEdge()
         // ViewModelProvider conserva la misma instancia durante cambios de configuración, como rotar.
-        val ordenesViewModel = ViewModelProvider(this)[OrdenesViewModel::class.java]
+        val proveedor = ViewModelProvider(this, (application as AcisApplication).viewModelFactory)
+        val ordenesViewModel = proveedor[OrdenesViewModel::class.java]
+        val sesionViewModel = proveedor[SesionViewModel::class.java]
         // Define la interfaz declarativa: tema compartido, contenedor y pantalla principal.
         setContent {
             AcisTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    AcisApp(viewModel = ordenesViewModel, modifier = Modifier.padding(innerPadding))
+                    AcisApp(viewModel = ordenesViewModel, sesionViewModel = sesionViewModel,
+                        modifier = Modifier.padding(innerPadding))
                 }
             }
         }

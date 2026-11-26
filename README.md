@@ -63,15 +63,18 @@ com.proyecto.acis/
 │   ├── OrdenTrabajo.kt          # Modelos de datos y enums (Perfil, Estado, Tipo, Prioridad)
 │   ├── OrdenesDb.kt             # Gestor de base de datos SQLite local
 │   ├── OrdenesRepository.kt     # Repositorio local con StateFlow
+│   ├── AutenticacionLocalRepository.kt # Adaptador al acceso SQLite existente
 │   ├── Usuario.kt               # Identidad, cuentas demo y derivación de contraseñas
 │   └── UbicacionCheckIn.kt      # Ubicación aproximada mediante LocationManager
 ├── domain/
+│   ├── AutenticacionRepository.kt # Contrato de preparación y autenticación
 │   ├── PermisosOt.kt             # Acceso según rol e identidad de la cuenta
 │   ├── PermisosUsuarios.kt       # Administración de accesos y protección de la propia cuenta
 │   └── ValidadorOt.kt           # Reglas de validación desacopladas
 ├── ui/
 │   ├── theme/                   # Paleta M3 "Frío Ártico" (Color.kt, Theme.kt, Type.kt)
-│   ├── OrdenesViewModel.kt      # ViewModel con manejo de estado y filtros por perfil
+│   ├── OrdenesViewModel.kt      # Órdenes y administración de cuentas aún pendiente de separar
+│   ├── SesionViewModel.kt       # Carga de acceso, login, logout y sus errores
 │   ├── LoginScreen.kt            # Formulario de inicio de sesión
 │   ├── components/
 │   │   ├── CamposOrden.kt       # Campos, selector de cliente, errores e indicadores compartidos
@@ -87,6 +90,8 @@ com.proyecto.acis/
 │       │   └── DetalleOrden.kt  # Visita, evidencia, informe y revisión
 │       └── usuarios/
 │           └── UsuariosScreen.kt # Lista de cuentas y diálogo de permisos
+├── session/SesionActual.kt      # Identidad única compartida en memoria
+├── AcisApplication.kt           # Construcción de dependencias y fábrica de ViewModels
 └── MainActivity.kt              # Punto de entrada de la aplicación
 ```
 
@@ -126,6 +131,18 @@ La lista permite buscar por OT/local/equipo y filtrar por estado. Para cambiar d
 
 ## Guía para estudiar el código
 
+### Primera separación de sesión (26 de noviembre de 2026)
+
+`LoginScreen` utiliza `SesionViewModel`, que recibe el contrato `AutenticacionRepository` y una `SesionActual`. El login ya no depende del ViewModel de órdenes. `EstadoAcceso` publica carga, progreso y errores mediante StateFlow; la contraseña no forma parte de ese estado.
+
+`AcisApplication` construye una única instancia del repositorio SQLite y de la sesión por proceso. Su fábrica entrega las dependencias a los ViewModels, que Android conserva durante los cambios de configuración. El repositorio compartido ya no se cierra al destruir un ViewModel individual; su conexión vive durante el proceso. Esto no guarda la sesión en disco.
+
+Al pulsar Salir, `AcisApp` comprueba que no haya una operación en curso, limpia los borradores de órdenes y pide a `SesionViewModel` borrar la identidad. La navegación autenticada sale de composición y se muestra el login. Los registros SQLite se conservan.
+
+Esta es una separación gradual: `AutenticacionLocalRepository` adapta las operaciones existentes de `OrdenesRepository`, conservando su inicialización y Mutex. La administración de usuarios sigue en `OrdenesViewModel`; separar ese flujo y los contratos de órdenes es una etapa posterior. No se modificó el esquema SQLite v6 ni se incorporaron backend o API.
+
+Para estudiar el recorrido: `LoginScreen` → `SesionViewModel` → `AutenticacionRepository` → `AutenticacionLocalRepository` → repositorio/SQLite. La identidad resultante se publica en `SesionActual`; las órdenes consultan esa misma identidad para aplicar permisos.
+
 Aunque los archivos están bajo `src/main/java`, el código de la aplicación está escrito en **Kotlin** (`.kt`). Los comentarios explican responsabilidades, estado y decisiones dentro de cada bloque.
 
 ### Revisión de comentarios del 23 de noviembre de 2026
@@ -148,7 +165,7 @@ Orden recomendado de lectura:
 2. `domain/ValidadorOt.kt`, `domain/PermisosOt.kt` y `domain/PermisosUsuarios.kt`: validaciones y permisos separados para órdenes y administración de cuentas.
 3. `data/OrdenesDb.kt`: cómo se crean las tablas y cómo se convierten filas SQL en objetos Kotlin.
 4. `data/OrdenesRepository.kt`: cómo se guardan cambios, se controlan las transiciones de estado y se publica la lista actualizada.
-5. `ui/OrdenesViewModel.kt`: cómo se conectan sesión, formularios, validaciones y operaciones del repositorio.
+5. `ui/SesionViewModel.kt` y `session/SesionActual.kt`: acceso e identidad compartida; `ui/OrdenesViewModel.kt`: formularios, permisos y operaciones del repositorio.
 6. `MainActivity.kt`, `ui/LoginScreen.kt`, `ui/navigation/` y `ui/screens/ordenes/`: cómo arranca la aplicación, cómo se conectan los destinos y cómo las pantallas envían acciones.
 7. `ui/theme/` y `ui/components/`: colores, tipografía y componentes visuales compartidos.
 8. `ui/screens/usuarios/UsuariosScreen.kt`: cómo el administrador edita un borrador de permisos y espera la confirmación del guardado.
@@ -236,7 +253,7 @@ El planificador puede crear, editar y eliminar órdenes. La implementación actu
 - **SQLite versión 6:** `acis_ordenes.db` contiene `ordenes`, `usuarios` y `configuracion`. La migración desde v5 agrega activación de cuentas y el administrador demo, conservando órdenes y contraseñas anteriores. No se utiliza Room.
 - **Inicialización:** si corresponde, se importan órdenes antiguas desde SharedPreferences o se insertan siete ejemplos. La marca `inicializada` evita recrearlos después de borrar todas las órdenes.
 - **Contraseñas:** se almacena una sal aleatoria y un hash derivado con PBKDF2, 120 000 iteraciones y 256 bits. Las cuentas y la clave de demostración están publicadas en el proyecto; no hay registro de usuarios ni autenticación remota.
-- **Sesión:** el usuario autenticado vive en el ViewModel. No se implementa un inicio de sesión persistente tras terminar el proceso. Salir limpia los borradores en memoria, pero conserva las órdenes guardadas.
+- **Sesión:** el usuario autenticado vive en `SesionActual`, compartida por los ViewModels. No se implementa un inicio de sesión persistente tras terminar el proceso. Salir limpia los borradores en memoria, pero conserva las órdenes guardadas.
 - **Validación:** crear/editar exige local, equipo, descripción, tipo, prioridad, fecha real `dd/MM/yyyy`, hora `HH:mm` y una cuenta cliente activa. El selector y la validación usan las cuentas cargadas desde SQLite. No se exige que la fecha sea futura. Los errores de creación se activan después del intento de guardar y se recalculan al editar.
 - **Informe:** diagnóstico y actividad son obligatorios al finalizar; materiales y fotografía son opcionales. Escribir en el formulario no equivale a persistirlo: hay que guardar el borrador o finalizar.
 - **Fotografía:** se conserva una referencia por OT en SQLite y el archivo en `filesDir/evidencias`. `FileProvider` entrega a la cámara una URI para escribir la imagen. Al reemplazar una foto se intenta eliminar la anterior después de guardar la nueva referencia.
@@ -266,6 +283,7 @@ Desde la raíz, con el JDK y SDK configurados para Gradle:
 | `app/src/test/.../PermisosOtTest.kt` | Acceso por identidad, ausencia de sesión y separación de roles. |
 | `app/src/test/.../PermisosUsuariosTest.kt` | Privilegios administrativos, cuentas inactivas y protección del propio acceso. |
 | `app/src/test/.../ClavesTest.kt` | Clave correcta/incorrecta y efecto de usar sales diferentes. |
+| `app/src/test/.../SesionViewModelTest.kt` | Carga y autenticación con fallos/reintentos, identidad compartida, cuenta inactiva, llamadas duplicadas y logout mediante un repositorio simulado. |
 | `app/src/androidTest/.../PersistenciaTest.kt` | SQLite, reapertura, migraciones v4/v5, activación de cuentas, ciclo de estados y borrado sin regenerar ejemplos. |
 | `app/src/androidTest/.../LoginNavegacionTest.kt` | Login, administrador, cambio de cuenta, búsqueda, navegación fija y permanencia ante formularios inválidos. |
 | `app/src/androidTest/.../ExampleInstrumentedTest.kt` | Identificador de la aplicación debug instalada. |
@@ -277,6 +295,13 @@ Las pruebas de persistencia utilizan bases temporales con nombres `test-<UUID>.d
 - **23 pruebas unitarias JVM aprobadas**; compilación debug y análisis Android completados.
 - **12 casos instrumentados verificados en Samsung SM-S921B (Android 16):** 11 aprobaron en la ejecución completa y el caso de desplazamiento aprobó al repetirlo después de corregir su selector. No se ejecutó nuevamente toda la suite después de esa corrección.
 - Cámara, ubicación física y todos los cierres tras guardados exitosos conservan comprobaciones manuales pendientes.
+
+### Verificación de la separación de sesión, 26 de noviembre de 2026
+
+- **28 pruebas JVM aprobadas**, incluidas 5 de `SesionViewModel` con una implementación simulada del contrato de autenticación.
+- APK debug y APK de pruebas Android compilados; lint con 0 errores y 18 advertencias (más 10 sugerencias).
+- Se agregó un caso de UI para logout, limpieza de borradores y conservación de órdenes. Está compilado, **no ejecutado**: no había dispositivos conectados a ADB.
+- La cobertura del 80 % sigue pendiente de medición. La separación de administración de usuarios y contratos de órdenes sigue pendiente.
 
 ## Pendientes para la evaluación final
 
