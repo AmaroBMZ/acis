@@ -26,6 +26,29 @@ class PersistenciaTest {
     // Cierra y elimina únicamente la base temporal utilizada por esta prueba.
     @After fun limpiar() { db.close(); context.deleteDatabase(nombre) }
 
+    @Test fun registroAutorizaNormalizaYPersisteSinReemplazarCuentas() = runBlocking {
+        repo.cargar()
+        val admin = "admin@acis.cl"
+        val clave = "Nueva1234"
+        assertEquals(com.proyecto.acis.domain.ResultadoRegistro.NO_AUTORIZADO,
+            db.registrarUsuario(CuentasPrueba.CLIENTE, "Nueva", "nueva@acis.cl", Perfil.CLIENTE, clave))
+        assertEquals(com.proyecto.acis.domain.ResultadoRegistro.CREADO,
+            repo.registrarUsuario(admin, "Nueva", " NUEVA@ACIS.CL ", Perfil.CLIENTE, clave))
+        assertTrue(repo.usuarios.value.any { it.correo == "nueva@acis.cl" && it.activo })
+        assertEquals(com.proyecto.acis.domain.ResultadoRegistro.CORREO_DUPLICADO,
+            db.registrarUsuario(admin, "Otra", "NUEVA@ACIS.CL", Perfil.ADMINISTRADOR, "Otra1234"))
+        val tecnico = repo.usuarios.value.first { it.perfil == Perfil.TECNICO }
+        assertEquals(com.proyecto.acis.domain.ResultadoRegistro.NOMBRE_TECNICO_DUPLICADO,
+            db.registrarUsuario(admin, tecnico.nombre, "otro@acis.cl", Perfil.CLIENTE, clave))
+        db.close()
+        db = OrdenesDb(context, nombre)
+        assertEquals(Perfil.CLIENTE, db.autenticar("nueva@acis.cl", clave)?.perfil)
+        assertNull(db.autenticar("nueva@acis.cl", "Otra1234"))
+        db.readableDatabase.rawQuery("SELECT hash FROM usuarios WHERE correo = ?", arrayOf("nueva@acis.cl")).use {
+            assertTrue(it.moveToFirst()); assertNotEquals(clave, it.getString(0))
+        }
+    }
+
     @Test fun accesoAdministrativoSeValidaEnLaBaseYPersiste() = runBlocking {
         // Intenta escrituras directamente en SQLite para comprobar que la protección no depende del botón.
         repo.cargar()

@@ -20,6 +20,7 @@ class AcisApplication : Application() {
             val instancia = when (modelClass) {
                 SesionViewModel::class.java -> SesionViewModel(AutenticacionLocalRepository(repository), sesion)
                 OrdenesViewModel::class.java -> OrdenesViewModel(repository, sesion)
+                com.proyecto.acis.ui.UsuariosViewModel::class.java -> com.proyecto.acis.ui.UsuariosViewModel(com.proyecto.acis.data.UsuariosLocalRepository(repository), sesion)
                 else -> throw IllegalArgumentException("ViewModel desconocido: ${modelClass.name}")
             }
             return modelClass.cast(instancia)!!

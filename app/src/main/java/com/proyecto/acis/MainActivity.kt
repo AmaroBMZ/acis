@@ -25,11 +25,13 @@ class MainActivity : ComponentActivity() {
         val proveedor = ViewModelProvider(this, (application as AcisApplication).viewModelFactory)
         val ordenesViewModel = proveedor[OrdenesViewModel::class.java]
         val sesionViewModel = proveedor[SesionViewModel::class.java]
+        val usuariosViewModel = proveedor[com.proyecto.acis.ui.UsuariosViewModel::class.java]
         // Define la interfaz declarativa: tema compartido, contenedor y pantalla principal.
         setContent {
             AcisTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     AcisApp(viewModel = ordenesViewModel, sesionViewModel = sesionViewModel,
+                        usuariosViewModel = usuariosViewModel,
                         modifier = Modifier.padding(innerPadding))
                 }
             }

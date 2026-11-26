@@ -37,18 +37,6 @@ class OrdenesViewModel(
     // El formulario de OT usa el catálogo actual de cuentas; no permite elegir clientes desactivados.
     val clientesActivos get() = usuarios.value.filter { it.activo && it.perfil == Perfil.CLIENTE }
 
-    // Coordina autorización, persistencia y respuesta del diálogo administrativo.
-    fun actualizarAcceso(correo: String, perfil: Perfil, activo: Boolean, onResultado: (Boolean) -> Unit) = ejecutar {
-        val actor = usuario
-        val destino = usuarios.value.firstOrNull { it.correo == correo }
-        val permitido = com.proyecto.acis.domain.PermisosUsuarios.puedeModificar(actor, destino, perfil, activo)
-        // && no ejecuta la escritura si la regla anterior falla; un permiso válido exige actor no nulo.
-        val guardado = permitido && repository.actualizarAcceso(actor!!.correo, correo, perfil, activo)
-        if (!guardado) errorGeneral = "No se pudo modificar el acceso. No puedes desactivar ni quitar tu propio rol administrador."
-        // La UI cierra el diálogo con true; con false mantiene el borrador y muestra el error.
-        onResultado(guardado)
-    }
-
     // El valor de respaldo no inicia sesión: los permisos comprueban usuario y rechazan null.
     val perfil: Perfil get() = usuario?.perfil ?: Perfil.PLANIFICADOR
 

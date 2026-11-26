@@ -49,23 +49,40 @@ import com.proyecto.acis.ui.components.OrdenNoDisponible
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AcisApp(viewModel: OrdenesViewModel, sesionViewModel: SesionViewModel, modifier: Modifier = Modifier) {
+fun AcisApp(viewModel: OrdenesViewModel, sesionViewModel: SesionViewModel, usuariosViewModel: com.proyecto.acis.ui.UsuariosViewModel, modifier: Modifier = Modifier) {
     val usuario by sesionViewModel.usuario.collectAsState()
+    var confirmarSalida by androidx.compose.runtime.saveable.rememberSaveable(usuario?.correo) { androidx.compose.runtime.mutableStateOf(false) }
     // Coordina la salida sin acoplar los ViewModels entre sí. No abandona una escritura en curso.
     val salir: () -> Unit = {
-        if (!viewModel.ocupado && !sesionViewModel.estado.value.ocupado) {
-            viewModel.limpiarBorradores()
-            sesionViewModel.cerrarSesion()
-        }
+        if (!viewModel.ocupado && !usuariosViewModel.ocupado && !sesionViewModel.estado.value.ocupado) confirmarSalida = true
     }
     if (usuario == null) {
         LoginScreen(sesionViewModel, modifier)
     } else if (usuario?.perfil == Perfil.ADMINISTRADOR) {
         // El administrador tiene su propio inicio y no entra al navegador operativo de órdenes.
-        key(usuario?.correo) { com.proyecto.acis.ui.screens.usuarios.UsuariosScreen(viewModel, salir, modifier) }
+        key(usuario?.correo) { com.proyecto.acis.ui.screens.usuarios.UsuariosScreen(usuariosViewModel, salir, modifier) }
     } else {
         // Cambiar de cuenta descarta el navegador y los estados de la sesión anterior.
         key(usuario?.correo) { AplicacionAutenticada(viewModel, salir, modifier) }
+    }
+    // Cancelar o tocar fuera conserva la sesión y sus borradores; solo confirmar los descarta.
+    if (usuario != null && confirmarSalida) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmarSalida = false },
+            title = { Text("¿Cerrar sesión?") },
+            text = { Text("Volverás a la pantalla de inicio de sesión. Los cambios que no hayas guardado se perderán.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (!viewModel.ocupado && !usuariosViewModel.ocupado && !sesionViewModel.estado.value.ocupado) {
+                        viewModel.limpiarBorradores()
+                        usuariosViewModel.limpiarErrores()
+                        confirmarSalida = false
+                        sesionViewModel.cerrarSesion()
+                    }
+                }) { Text("Cerrar sesión") }
+            },
+            dismissButton = { TextButton(onClick = { confirmarSalida = false }) { Text("Cancelar") } },
+        )
     }
 }
 

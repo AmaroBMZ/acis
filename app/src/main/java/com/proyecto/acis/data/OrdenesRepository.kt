@@ -375,6 +375,11 @@ class OrdenesRepository(context: Context, private val database: OrdenesDb = Orde
     }
     // API suspendida del repositorio: todas estas entradas pasan por enIo para serializar el acceso.
     suspend fun cargar() = enIo { cargarInterno() }
+    suspend fun registrarUsuario(actor: String, nombre: String, correo: String, perfil: Perfil, clave: String) = enIo {
+        val resultado = database.registrarUsuario(actor, nombre, correo, perfil, clave)
+        if (resultado == com.proyecto.acis.domain.ResultadoRegistro.CREADO) _usuarios.value = database.leerUsuarios()
+        resultado
+    }
     suspend fun actualizarAcceso(actorCorreo: String, correo: String, perfil: Perfil, activo: Boolean): Boolean = enIo {
         // enIo ejecuta fuera del hilo de la interfaz y serializa el acceso mediante Mutex.
         val guardado = database.actualizarAcceso(actorCorreo, correo, perfil, activo)

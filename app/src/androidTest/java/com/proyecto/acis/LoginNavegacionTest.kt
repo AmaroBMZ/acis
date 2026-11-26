@@ -42,6 +42,15 @@ class LoginNavegacionTest {
             vm.cambiarDiagnostico(orden.id, "Texto sin guardar")
         }
         compose.onNodeWithText("Salir").performClick()
+        compose.onNodeWithText("¿Cerrar sesión?").assertExists()
+        compose.onNodeWithText("Cancelar").performClick()
+        compose.runOnIdle {
+            org.junit.Assert.assertNotNull(vm.usuario)
+            org.junit.Assert.assertEquals("Borrador que debe desaparecer", vm.datosCrear.local)
+            org.junit.Assert.assertEquals("Texto sin guardar", vm.formularioDetalle(orden).diagnostico)
+        }
+        compose.onNodeWithText("Salir").performClick()
+        compose.onNodeWithText("Cerrar sesión").performClick()
         compose.onNodeWithText("Ingresa a tu cuenta").assertExists()
         compose.runOnIdle {
             org.junit.Assert.assertNull(vm.usuario)
@@ -92,6 +101,7 @@ class LoginNavegacionTest {
         compose.onNodeWithText("Perfil activo: Administrador").assertExists()
         compose.onNodeWithText("+").assertDoesNotExist()
         compose.onNodeWithText("Salir").assertIsDisplayed().performClick()
+        compose.onNodeWithText("Cerrar sesión").performClick()
         compose.onNodeWithText("Ingresa a tu cuenta").assertExists()
     }
 
@@ -116,6 +126,7 @@ class LoginNavegacionTest {
         compose.onNodeWithText("Buscar OT, local o equipo").performScrollTo().performTextInput("sin coincidencias xyz")
         compose.onNodeWithText("0 órdenes encontradas").assertExists()
         compose.onNodeWithText("Salir").performClick()
+        compose.onNodeWithText("Cerrar sesión").performClick()
         compose.onNodeWithText("Ingresa a tu cuenta").assertExists()
         compose.onNodeWithText("+").assertDoesNotExist()
         entrar("cliente2@acis.cl")
@@ -123,9 +134,13 @@ class LoginNavegacionTest {
         compose.onNodeWithText("Perfil activo: Cliente").assertExists()
         compose.onNodeWithText("+").assertDoesNotExist()
         compose.onNodeWithText("Salir").performClick()
+        compose.onNodeWithText("Cerrar sesión").performClick()
         entrar("tecnico@acis.cl")
         compose.waitUntil(20_000) { compose.onAllNodesWithText("Salir").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Perfil activo: Técnico").assertExists()
         compose.onNodeWithText("+").assertDoesNotExist()
+        compose.onNodeWithText("Salir").performClick()
+        compose.onNodeWithText("Cerrar sesión").performClick()
+        compose.onNodeWithText("Ingresa a tu cuenta").assertExists()
     }
 }

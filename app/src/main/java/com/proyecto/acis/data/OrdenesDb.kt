@@ -103,6 +103,34 @@ class OrdenesDb(context: Context, nombre: String = "acis_ordenes.db") : SQLiteOp
             Perfil.valueOf(cursor.valor("perfil")), cursor.getInt(cursor.getColumnIndexOrThrow("activo")) == 1))
     } }
 
+    // Autoriza y crea dentro de una transacción; un correo duplicado nunca reemplaza otra cuenta.
+    fun registrarUsuario(actorCorreo: String, nombre: String, correo: String, perfil: Perfil, clave: String): com.proyecto.acis.domain.ResultadoRegistro {
+        val db = writableDatabase
+        val email = com.proyecto.acis.domain.ValidadorUsuario.correoNormalizado(correo)
+        db.beginTransaction()
+        return try {
+            val cuentas = leerUsuarios()
+            val actor = cuentas.firstOrNull { it.correo == actorCorreo }
+            val resultado = when {
+                !com.proyecto.acis.domain.PermisosUsuarios.puedeGestionar(actor) -> com.proyecto.acis.domain.ResultadoRegistro.NO_AUTORIZADO
+                com.proyecto.acis.domain.ValidadorUsuario.validar(nombre, email, clave, clave).isNotEmpty() -> com.proyecto.acis.domain.ResultadoRegistro.DATOS_INVALIDOS
+                cuentas.any { it.correo.equals(email, ignoreCase = true) } -> com.proyecto.acis.domain.ResultadoRegistro.CORREO_DUPLICADO
+                // Las OT actuales identifican técnicos por nombre: evita compartir su identidad accidentalmente.
+                cuentas.any { it.nombre.equals(nombre.trim(), ignoreCase = true) && (perfil == Perfil.TECNICO || it.perfil == Perfil.TECNICO) } -> com.proyecto.acis.domain.ResultadoRegistro.NOMBRE_TECNICO_DUPLICADO
+                else -> {
+                    val sal = Claves.nuevaSal()
+                    db.insertOrThrow("usuarios", null, ContentValues().apply {
+                        put("correo", email); put("nombre", nombre.trim()); put("perfil", perfil.name)
+                        put("sal", sal); put("hash", Claves.derivar(clave, sal)); put("activo", 1)
+                    })
+                    db.setTransactionSuccessful()
+                    com.proyecto.acis.domain.ResultadoRegistro.CREADO
+                }
+            }
+            resultado
+        } finally { db.endTransaction() }
+    }
+
     // Relee los permisos en SQLite dentro de la transacción: ocultar botones no autoriza escrituras.
     fun actualizarAcceso(actorCorreo: String, correo: String, perfil: Perfil, activo: Boolean): Boolean {
         val db = writableDatabase
@@ -113,6 +141,7 @@ class OrdenesDb(context: Context, nombre: String = "acis_ordenes.db") : SQLiteOp
             val actor = usuarios.firstOrNull { it.correo == actorCorreo }
             val destino = usuarios.firstOrNull { it.correo == correo }
             if (!com.proyecto.acis.domain.PermisosUsuarios.puedeModificar(actor, destino, perfil, activo)) false
+            else if (perfil == Perfil.TECNICO && usuarios.any { it.correo != correo && it.nombre.equals(destino!!.nombre, ignoreCase = true) }) false
             else {
                 // Cambia solo rol y activación. Conserva correo, nombre, sal, hash y las órdenes asociadas.
                 val ok = db.update("usuarios", ContentValues().apply {

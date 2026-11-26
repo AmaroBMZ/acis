@@ -12,12 +12,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.proyecto.acis.data.Perfil
-import com.proyecto.acis.ui.OrdenesViewModel
+import com.proyecto.acis.ui.UsuariosViewModel
 
 /** Administración local de accesos. La lista nunca recibe hashes ni contraseñas. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UsuariosScreen(viewModel: OrdenesViewModel, onSalir: () -> Unit, modifier: Modifier = Modifier) {
+fun UsuariosScreen(viewModel: UsuariosViewModel, onSalir: () -> Unit, modifier: Modifier = Modifier) {
+    var registrar by rememberSaveable { mutableStateOf(false) }
     // Observa la lista publicada después de leer o actualizar SQLite; Compose redibuja las tarjetas.
     val usuarios by viewModel.usuarios.collectAsState()
     // El correo identifica la cuenta seleccionada. null significa que no hay un diálogo abierto.
@@ -43,6 +44,11 @@ fun UsuariosScreen(viewModel: OrdenesViewModel, onSalir: () -> Unit, modifier: M
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item { Text("Perfil activo: Administrador", style = MaterialTheme.typography.titleMedium) }
             item { Text("Gestiona el acceso de las cuentas locales. Las órdenes las administra el planificador.") }
+            item {
+                Button(onClick = { viewModel.limpiarErrores(); registrar = true }, enabled = !viewModel.ocupado) {
+                    Text("Registrar usuario")
+                }
+            }
             if (viewModel.ocupado) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
             // La clave estable permite identificar cada tarjeta aunque cambie el rol de una cuenta.
             items(usuarios, key = { it.correo }) { cuenta ->
@@ -57,6 +63,7 @@ fun UsuariosScreen(viewModel: OrdenesViewModel, onSalir: () -> Unit, modifier: M
                             rol = cuenta.perfil.name
                             activo = cuenta.activo
                             error = false
+                            viewModel.limpiarErrores()
                         }, enabled = !viewModel.ocupado) { Text("Modificar acceso") }
                     }
                 }
@@ -81,7 +88,7 @@ fun UsuariosScreen(viewModel: OrdenesViewModel, onSalir: () -> Unit, modifier: M
                         Switch(checked = activo, onCheckedChange = { activo = it }, enabled = !viewModel.ocupado)
                     }
                     Text("Los cambios de rol o activación se aplican al siguiente inicio de sesión de esa cuenta.")
-                    // Este mensaje se activa cuando el callback devuelve false; una excepción puede omitirlo.
+                    // Un rechazo o error de almacenamiento mantiene el editor abierto.
                     if (error) Text(viewModel.errorGeneral.orEmpty(), color = MaterialTheme.colorScheme.error)
                 }
             },
@@ -99,4 +106,5 @@ fun UsuariosScreen(viewModel: OrdenesViewModel, onSalir: () -> Unit, modifier: M
                 TextButton(onClick = { seleccionado = null }, enabled = !viewModel.ocupado) { Text("Cancelar") }
             })
     }
+    if (registrar) RegistroUsuarioDialog(viewModel, onCerrar = { registrar = false })
 }

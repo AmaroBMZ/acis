@@ -18,7 +18,11 @@ La aplicación ofrece cuatro roles locales: administrador, planificador, técnic
 
 ### Administración de cuentas
 
-El administrador consulta las cuentas, cambia sus roles y las activa o desactiva. No administra órdenes y no puede desactivar su propia cuenta ni quitarse el rol administrador. Los cambios se guardan en SQLite y se aplican al siguiente inicio de sesión de la cuenta modificada. El registro de cuentas nuevas y la gestión de acceso mediante backend siguen pendientes.
+El administrador registra cuentas, consulta las existentes, cambia sus roles y las activa o desactiva. No administra órdenes y no puede desactivar su propia cuenta ni quitarse el rol administrador. Los cambios se guardan en SQLite y se aplican al siguiente inicio de sesión de la cuenta modificada. La gestión mediante backend sigue pendiente.
+
+**Registrar usuario** solicita nombre completo, correo, rol, contraseña inicial y confirmación. La cuenta queda activa y puede ingresar con esas credenciales. Se validan campos, correo único (sin distinguir mayúsculas) y contraseña de 8 a 128 caracteres con letras y números; se guarda únicamente sal y hash PBKDF2. Cancelar descarta el alta. No existe registro público, recuperación ni cambio obligatorio de contraseña inicial.
+
+Las OT todavía identifican al técnico por nombre y asignan nuevas órdenes al técnico demo. Para evitar compartir esa identidad, el alta rechaza nombres que colisionen con un técnico y el cambio de rol también protege ese caso. Registrar otro técnico permite su acceso, pero la selección de técnico al asignar órdenes queda pendiente. Esta etapa no incorpora borrado físico de cuentas: se conserva la desactivación.
 
 ### 1. Perfil Planificador
 - **Creación de OTs**: Formulario para registrar cliente, local, equipo, descripción del trabajo, tipo (preventiva/correctiva), prioridad y fecha/hora programada. Después del primer intento de guardar, los errores se actualizan al editar los campos.
@@ -137,9 +141,9 @@ La lista permite buscar por OT/local/equipo y filtrar por estado. Para cambiar d
 
 `AcisApplication` construye una única instancia del repositorio SQLite y de la sesión por proceso. Su fábrica entrega las dependencias a los ViewModels, que Android conserva durante los cambios de configuración. El repositorio compartido ya no se cierra al destruir un ViewModel individual; su conexión vive durante el proceso. Esto no guarda la sesión en disco.
 
-Al pulsar Salir, `AcisApp` comprueba que no haya una operación en curso, limpia los borradores de órdenes y pide a `SesionViewModel` borrar la identidad. La navegación autenticada sale de composición y se muestra el login. Los registros SQLite se conservan.
+Al pulsar **Salir**, los cuatro roles ven **¿Cerrar sesión?**, con **Cancelar** y **Cerrar sesión**. Cancelar, volver atrás o tocar fuera conserva la sesión y los borradores. Solo confirmar limpia los borradores de órdenes y pide a `SesionViewModel` borrar la identidad. Se muestra el login y se conservan los registros SQLite; no se permite salir durante una escritura.
 
-Esta es una separación gradual: `AutenticacionLocalRepository` adapta las operaciones existentes de `OrdenesRepository`, conservando su inicialización y Mutex. La administración de usuarios sigue en `OrdenesViewModel`; separar ese flujo y los contratos de órdenes es una etapa posterior. No se modificó el esquema SQLite v6 ni se incorporaron backend o API.
+Esta es una separación gradual: `AutenticacionLocalRepository` y `UsuariosLocalRepository` adaptan las operaciones existentes de `OrdenesRepository`, conservando su inicialización y Mutex. La administración tiene su propio `UsuariosViewModel` y contrato `UsuariosRepository`; `ValidadorUsuario` concentra las reglas de alta. Separar internamente la persistencia de órdenes y cuentas es una etapa posterior. No se modificó el esquema SQLite v6 ni se incorporaron backend o API.
 
 Para estudiar el recorrido: `LoginScreen` → `SesionViewModel` → `AutenticacionRepository` → `AutenticacionLocalRepository` → repositorio/SQLite. La identidad resultante se publica en `SesionActual`; las órdenes consultan esa misma identidad para aplicar permisos.
 
@@ -173,7 +177,7 @@ Orden recomendado de lectura:
 ### Recorrido de una acción: modificar el acceso de una cuenta
 
 1. El administrador selecciona **Modificar acceso**. La pantalla copia el rol y la activación al borrador del diálogo; todavía no modifica SQLite.
-2. **Guardar** llama a `OrdenesViewModel.actualizarAcceso`, que comprueba la identidad del actor y la cuenta de destino mediante `PermisosUsuarios`.
+2. **Guardar** llama a `UsuariosViewModel.actualizarAcceso`, que comprueba la identidad del actor y la cuenta de destino mediante `PermisosUsuarios`.
 3. `OrdenesRepository.actualizarAcceso` ejecuta la operación en `Dispatchers.IO`, protegida por `Mutex`.
 4. `OrdenesDb.actualizarAcceso` relee las cuentas y vuelve a comprobar los permisos dentro de una transacción. Solo modifica rol y activación; conserva la contraseña y los datos de las órdenes.
 5. Si se guarda, el repositorio recarga su `StateFlow` de usuarios y el callback devuelve `true`: se actualiza la lista y se cierra el diálogo. Si la operación devuelve `false`, el editor conserva el borrador y muestra el error. Si se lanza una excepción antes del callback, `ejecutar` la captura y publica `errorGeneral`, pero el diálogo administrativo no garantiza mostrarlo: su indicador `error` depende de ese callback.
@@ -252,7 +256,7 @@ El planificador puede crear, editar y eliminar órdenes. La implementación actu
 
 - **SQLite versión 6:** `acis_ordenes.db` contiene `ordenes`, `usuarios` y `configuracion`. La migración desde v5 agrega activación de cuentas y el administrador demo, conservando órdenes y contraseñas anteriores. No se utiliza Room.
 - **Inicialización:** si corresponde, se importan órdenes antiguas desde SharedPreferences o se insertan siete ejemplos. La marca `inicializada` evita recrearlos después de borrar todas las órdenes.
-- **Contraseñas:** se almacena una sal aleatoria y un hash derivado con PBKDF2, 120 000 iteraciones y 256 bits. Las cuentas y la clave de demostración están publicadas en el proyecto; no hay registro de usuarios ni autenticación remota.
+- **Contraseñas:** se almacena una sal aleatoria y un hash derivado con PBKDF2, 120 000 iteraciones y 256 bits. Las cuentas y la clave de demostración están publicadas en el proyecto; el registro es administrativo y local, sin autenticación remota.
 - **Sesión:** el usuario autenticado vive en `SesionActual`, compartida por los ViewModels. No se implementa un inicio de sesión persistente tras terminar el proceso. Salir limpia los borradores en memoria, pero conserva las órdenes guardadas.
 - **Validación:** crear/editar exige local, equipo, descripción, tipo, prioridad, fecha real `dd/MM/yyyy`, hora `HH:mm` y una cuenta cliente activa. El selector y la validación usan las cuentas cargadas desde SQLite. No se exige que la fecha sea futura. Los errores de creación se activan después del intento de guardar y se recalculan al editar.
 - **Informe:** diagnóstico y actividad son obligatorios al finalizar; materiales y fotografía son opcionales. Escribir en el formulario no equivale a persistirlo: hay que guardar el borrador o finalizar.
@@ -305,7 +309,7 @@ Las pruebas de persistencia utilizan bases temporales con nombres `test-<UUID>.d
 
 ## Pendientes para la evaluación final
 
-Los cuatro roles implementados funcionan localmente. Todavía falta implementar el backend propio con microservicios y base de datos externa, conectar el CRUD remoto, completar registro/recuperación de contraseña/edición de perfil personal e integrar una API externa mediante Retrofit.
+Los cuatro roles y el registro administrativo están implementados localmente. Todavía falta implementar el backend propio con microservicios y base de datos externa, conectar el CRUD remoto, completar recuperación de contraseña/edición de perfil personal e integrar una API externa mediante Retrofit.
 
 También falta medir y alcanzar el 80 % de cobertura de lógica: el número de pruebas aprobadas no demuestra ese porcentaje. La APK disponible es debug; la entrega final requiere APK release firmado y documentación de endpoints, ejecución de servicios y firma.
 
