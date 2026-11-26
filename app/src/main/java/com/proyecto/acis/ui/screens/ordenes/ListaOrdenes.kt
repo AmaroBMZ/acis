@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -23,11 +24,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
@@ -38,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.compose.composable
@@ -73,10 +78,10 @@ internal fun ListaOrdenesAdaptada(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        // 1. ENCABEZADO CON NOMBRE DE LA APLICACIÓN Y AVATAR
+        // El saludo y el nombre ACIS dejan claro en qué perfil está trabajando la persona.
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -84,15 +89,15 @@ internal fun ListaOrdenesAdaptada(
             ) {
                 // Avatar con iniciales ACIS
                 Surface(
-                    modifier = Modifier.size(52.dp),
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(48.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(
-                            text = "AC",
-                            fontSize = 20.sp,
+                            text = "A",
+                            fontSize = 24.sp,
                             fontWeight = FontWeight.Bold,
                         )
                     }
@@ -100,64 +105,42 @@ internal fun ListaOrdenesAdaptada(
                 Spacer(modifier = Modifier.width(14.dp))
                 Column {
                     Text(
-                        text = "ACIS · Servicios Técnicos",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        text = "Climatización & Refrigeración",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-
-        // 2. PERFIL DE LA CUENTA AUTENTICADA
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "Perfil activo: ${perfil.etiqueta}",
+                        text = "ACIS · ${perfil.etiqueta}",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
                     )
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    ) {
-                        Text("Acceso según tu cuenta")
-                    }
+                    Text(
+                        text = "Servicios técnicos · Climatización y refrigeración",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
         }
 
-        // 3. TARJETA DESTACADA: ÓRDENES RECIENTES
+        item {
+            Text("Órdenes de trabajo", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text("Revisa y gestiona los servicios asignados.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+
         item {
             OutlinedTextField(busqueda, { busqueda = it }, label = { Text("Buscar OT, local o equipo") },
-                singleLine = true, modifier = Modifier.fillMaxWidth())
+                singleLine = true, shape = RoundedCornerShape(28.dp), modifier = Modifier.fillMaxWidth())
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(selected = estadoFiltro == null, onClick = { estadoFiltro = null }, label = { Text("Todas") })
                 EstadoOt.entries.forEach { estado ->
                     FilterChip(selected = estadoFiltro == estado.name, onClick = { estadoFiltro = estado.name }, label = { Text(estado.etiqueta) })
                 }
             }
-            Text("${ordenes.size} órdenes encontradas")
+            Text("${ordenes.size} órdenes · ${if (perfil == Perfil.TECNICO) "Tu jornada" else "Ordenadas por actividad"}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        item {
+        if (ordenReciente != null) item {
             Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .then(
-                        if (ordenReciente != null) Modifier.clickable { onSeleccionar(ordenReciente.id) }
-                        else Modifier
-                    ),
-                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.fillMaxWidth().clickable { onSeleccionar(ordenReciente.id) },
+                shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
             ) {
@@ -181,14 +164,11 @@ internal fun ListaOrdenesAdaptada(
                                 fontSize = 16.sp,
                             )
                         }
-                        if (ordenReciente != null) {
-                            EstadoBadge(ordenReciente.estado)
-                        }
+                        EstadoBadge(ordenReciente.estado)
                     }
 
-                    if (ordenReciente != null) {
                         Text(
-                            text = "¡Última orden creada!",
+                            text = if (perfil == Perfil.TECNICO) "Siguiente servicio" else "Orden reciente",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.Bold,
@@ -215,24 +195,10 @@ internal fun ListaOrdenesAdaptada(
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
                             )
                         }
-                    } else {
-                        Text(
-                            text = "¡No hay órdenes recientes!",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        )
-                        Text(
-                            text = "Prueba otra búsqueda o filtro. Si eres planificador, usa + para registrar una orden.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f),
-                        )
-                    }
                 }
             }
         }
 
-        // 4. SECCIÓN: TODAS LAS ÓRDENES DE TRABAJO
         item {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -240,8 +206,8 @@ internal fun ListaOrdenesAdaptada(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "Todas las órdenes (${ordenes.size})",
-                    style = MaterialTheme.typography.titleLarge,
+                    text = "${if (perfil == Perfil.CLIENTE) "Mis servicios" else "Todas las órdenes"} (${ordenes.size})",
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                 )
             }
@@ -257,7 +223,6 @@ internal fun ListaOrdenesAdaptada(
             }
         }
 
-        // Listado vertical de cada una de las órdenes (estilo bloques "Mis asignaturas")
         items(ordenes, key = { it.id }) { orden ->
             val colorIndicador = when (orden.prioridad) {
                 PrioridadOt.ALTA -> MaterialTheme.colorScheme.primary
@@ -270,7 +235,7 @@ internal fun ListaOrdenesAdaptada(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { onSeleccionar(orden.id) },
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(22.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
             ) {
@@ -300,12 +265,6 @@ internal fun ListaOrdenesAdaptada(
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = "│ ",
-                                    color = colorIndicador,
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                                Text(
                                     text = orden.id,
                                     style = MaterialTheme.typography.labelLarge,
                                     color = MaterialTheme.colorScheme.primary,
@@ -329,15 +288,13 @@ internal fun ListaOrdenesAdaptada(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(
-                                text = orden.tipo.etiqueta,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                        Text("${orden.equipo}${if (orden.tecnico.isNotBlank()) " · ${orden.tecnico}" else ""}",
+                            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
                             PrioridadBadge(orden.prioridad)
                         }
                         Text(
-                            text = "Programado: ${orden.fechaProgramada}",
+                            text = "${orden.fechaProgramada}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

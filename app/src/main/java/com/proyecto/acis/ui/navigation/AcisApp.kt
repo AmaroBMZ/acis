@@ -1,11 +1,8 @@
 package com.proyecto.acis.ui.navigation
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContentTransitionScope
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -23,6 +20,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -94,6 +93,7 @@ private fun AplicacionAutenticada(viewModel: OrdenesViewModel, onSalir: () -> Un
     // collectAsState convierte el StateFlow en estado Compose: una nueva lista actualiza la UI.
     val ordenes by viewModel.ordenes.collectAsState()
     val perfil = viewModel.perfil
+    var seccion by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableIntStateOf(0) }
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val rutaActual = navBackStackEntry?.destination?.route
     // Consume Atrás mientras el ViewModel procesa una operación.
@@ -104,7 +104,7 @@ private fun AplicacionAutenticada(viewModel: OrdenesViewModel, onSalir: () -> Un
         topBar = {
             Column {
                 TopAppBar(
-                    title = { Text(viewModel.usuario?.nombre.orEmpty()) },
+                    title = { Text("ACIS · ${perfil.etiqueta}") },
                     // La navegación permanece visible aunque el formulario se desplace.
                     navigationIcon = {
                         // En la lista principal no hay un destino anterior dentro de este navegador.
@@ -122,7 +122,7 @@ private fun AplicacionAutenticada(viewModel: OrdenesViewModel, onSalir: () -> Un
         },
         floatingActionButton = {
             // Botón flotante (+) para crear nueva OT (visible para Planificador en la lista)
-            if (rutaActual == RutasAcis.ORDENES && perfil == Perfil.PLANIFICADOR) {
+            if (rutaActual == RutasAcis.ORDENES && perfil == Perfil.PLANIFICADOR && seccion != 2) {
                 FloatingActionButton(
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -140,6 +140,35 @@ private fun AplicacionAutenticada(viewModel: OrdenesViewModel, onSalir: () -> Un
                 }
             }
         },
+        bottomBar = {
+            if (rutaActual != RutasAcis.CREAR && rutaActual != RutasAcis.EDITAR) {
+                val etiquetas = when (perfil) {
+                    Perfil.PLANIFICADOR -> listOf("Inicio", "Órdenes", "Perfil")
+                    Perfil.TECNICO -> listOf("Jornada", "Historial", "Perfil")
+                    Perfil.CLIENTE -> listOf("Inicio", "Servicios", "Perfil")
+                    Perfil.ADMINISTRADOR -> emptyList()
+                }
+                NavigationBar {
+                    etiquetas.forEachIndexed { indice, etiqueta ->
+                        NavigationBarItem(
+                            selected = seccion == indice,
+                            onClick = {
+                                seccion = indice
+                                // Desde el detalle, las pestañas llevan de vuelta a la raíz del perfil.
+                                if (rutaActual != RutasAcis.ORDENES) {
+                                    navController.navigate(RutasAcis.ORDENES) {
+                                        popUpTo(RutasAcis.ORDENES) { inclusive = false }
+                                        launchSingleTop = true
+                                    }
+                                }
+                            },
+                            icon = { Text(when (indice) { 0 -> "⌂"; 1 -> "▤"; else -> "●" }, fontSize = 20.sp) },
+                            label = { Text(etiqueta) },
+                        )
+                    }
+                }
+            }
+        },
     ) { paddingValues ->
         Box(
             modifier = Modifier
@@ -151,40 +180,28 @@ private fun AplicacionAutenticada(viewModel: OrdenesViewModel, onSalir: () -> Un
                 navController = navController,
                 startDestination = RutasAcis.ORDENES,
                 modifier = Modifier.fillMaxSize(),
-                enterTransition = {
-                    fadeIn(tween(380)) + slideIntoContainer(
-                        towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                        animationSpec = tween(380),
-                    )
-                },
-                exitTransition = {
-                    fadeOut(tween(320)) + slideOutOfContainer(
-                        towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                        animationSpec = tween(320),
-                    )
-                },
-                popEnterTransition = {
-                    fadeIn(tween(380)) + slideIntoContainer(
-                        towards = AnimatedContentTransitionScope.SlideDirection.End,
-                        animationSpec = tween(380),
-                    )
-                },
-                popExitTransition = {
-                    fadeOut(tween(320)) + slideOutOfContainer(
-                        towards = AnimatedContentTransitionScope.SlideDirection.End,
-                        animationSpec = tween(320),
-                    )
-                },
+                // Las pantallas cambian directamente, sin el efecto de encogimiento al volver.
+                enterTransition = { EnterTransition.None },
+                exitTransition = { ExitTransition.None },
+                popEnterTransition = { EnterTransition.None },
+                popExitTransition = { ExitTransition.None },
             ) {
                 // Pantalla principal adaptada con la distribución del prototipo
                 composable(RutasAcis.ORDENES) {
-                    Crossfade(targetState = perfil, animationSpec = tween(380), label = "cambio de perfil") { perfilVisible ->
-                        ListaOrdenesAdaptada(
-                            todasOrdenes = viewModel.ordenesParaPerfil(ordenes, perfilVisible),
-                            perfil = perfilVisible,
+                        val ordenesVisibles = viewModel.ordenesParaPerfil(ordenes, perfil)
+                        val ordenesSeccion = when {
+                            seccion == 2 -> emptyList()
+                            perfil == Perfil.TECNICO && seccion == 1 -> ordenesVisibles.filter { it.estado == com.proyecto.acis.data.EstadoOt.CERRADA }
+                            perfil == Perfil.TECNICO -> ordenesVisibles.filter { it.estado != com.proyecto.acis.data.EstadoOt.CERRADA }
+                            seccion == 0 -> ordenesVisibles.filter { it.estado != com.proyecto.acis.data.EstadoOt.CERRADA }
+                            else -> ordenesVisibles
+                        }
+                        if (seccion == 2) PerfilLocal(viewModel.usuario?.nombre.orEmpty(), viewModel.usuario?.correo.orEmpty(), perfil)
+                        else ListaOrdenesAdaptada(
+                            todasOrdenes = ordenesSeccion,
+                            perfil = perfil,
                             onSeleccionar = { id -> navController.navigate(RutasAcis.detalle(id)) { launchSingleTop = true } },
                         )
-                    }
                 }
                 // Pantalla de formulario para crear OT (CRUD - Create)
                 composable(RutasAcis.CREAR) {
@@ -234,5 +251,16 @@ private fun AplicacionAutenticada(viewModel: OrdenesViewModel, onSalir: () -> Un
                 }
             }
         }
+    }
+}
+
+// El perfil muestra la identidad y el tipo de acceso actual, sin ofrecer edición aún.
+@Composable
+private fun PerfilLocal(nombre: String, correo: String, perfil: Perfil) {
+    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
+        Text("Mi perfil", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Text(nombre, style = MaterialTheme.typography.titleLarge)
+        Text(correo, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        androidx.compose.material3.AssistChip(onClick = {}, label = { Text(perfil.etiqueta) }, leadingIcon = { Text("●") })
     }
 }
