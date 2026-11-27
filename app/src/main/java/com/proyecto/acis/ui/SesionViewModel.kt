@@ -2,19 +2,12 @@ package com.proyecto.acis.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.proyecto.acis.data.Perfil
-import com.proyecto.acis.data.Usuario
 import com.proyecto.acis.domain.AutenticacionRepository
-import com.proyecto.acis.data.remote.ApiClient
-import com.proyecto.acis.data.remote.LoginRequest
 import com.proyecto.acis.session.SesionActual
-import com.google.gson.JsonParseException
-import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import retrofit2.HttpException
 
 /** Estado del acceso, separado de los formularios y errores de las órdenes. */
 data class EstadoAcceso(
@@ -42,37 +35,13 @@ class SesionViewModel(
         if (!_estado.value.cargado) {
             _estado.value = _estado.value.copy(error = "Primero carga los datos.")
         } else {
-            try {
-                val respuesta = ApiClient.auth.login(
-                    LoginRequest(identificador = correo.trim(), clave = clave),
-                )
-                val perfil = Perfil.valueOf(respuesta.rol)
-                val cuenta = Usuario(
-                    correo = respuesta.email,
-                    nombre = respuesta.nombre,
-                    perfil = perfil,
-                )
-                sesion.actualizar(cuenta, respuesta.token)
-            } catch (error: HttpException) {
-                _estado.value = _estado.value.copy(
-                    error = if (error.code() == 401) {
-                        "Correo o contraseña incorrectos."
-                    } else {
-                        "No se pudo completar el inicio de sesión (HTTP ${error.code()})."
-                    },
-                )
-            } catch (_: IOException) {
-                _estado.value = _estado.value.copy(
-                    error = "No se pudo conectar con el gateway. Revisa que el túnel siga activo y que la URL sea la actual.",
-                )
-            } catch (_: JsonParseException) {
-                _estado.value = _estado.value.copy(
-                    error = "El gateway respondió con un formato que la app no reconoce.",
-                )
-            } catch (_: IllegalArgumentException) {
-                _estado.value = _estado.value.copy(
-                    error = "El rol recibido por la app no coincide con los roles configurados.",
-                )
+            val resultado = repository.autenticar(correo.trim(), clave)
+            val cuenta = resultado?.usuario
+            if (cuenta == null || !cuenta.activo) {
+                _estado.value = _estado.value.copy(error = "Correo o contraseña incorrectos, o cuenta inactiva.")
+            } else {
+                // Solo guardar la sesión después de validar que la cuenta está activa.
+                sesion.actualizar(cuenta, resultado.token)
             }
         }
     }

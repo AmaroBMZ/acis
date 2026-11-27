@@ -21,25 +21,38 @@ class UsuariosViewModel(private val repository: UsuariosRepository, private val 
     var errores by mutableStateOf<Map<String, String>>(emptyMap())
         private set
 
+    fun refrescar() = cargarUsuarios()
+
+    private fun cargarUsuarios() {
+        val token = sesion.token.value ?: return
+        ejecutar({}) {
+            if (!repository.cargar(token)) {
+                errorGeneral = "No se pudo cargar el listado de usuarios del servidor."
+                false
+            } else true
+        }
+    }
+
     // Al abrir o cerrar un diálogo se descartan mensajes previos; nunca interrumpe una escritura activa.
     fun limpiarErrores() { if (!ocupado) { errores = emptyMap(); errorGeneral = null } }
 
-    fun registrar(nombre: String, correo: String, perfil: Perfil, clave: String, confirmacion: String, onResultado: (Boolean) -> Unit) {
+    fun registrar(nombre: String, correo: String, rut: String, perfil: Perfil, clave: String, confirmacion: String, onResultado: (Boolean) -> Unit) {
         if (ocupado) return
         limpiarErrores()
-        errores = ValidadorUsuario.validar(nombre, correo, clave, confirmacion)
+        errores = ValidadorUsuario.validar(nombre, correo, clave, confirmacion, rut)
         if (errores.isNotEmpty()) { onResultado(false); return }
-        // La UI valida para dar respuesta inmediata; SQLite vuelve a validar y autorizar dentro de la transacción.
+        // La UI valida primero; el microservicio vuelve a validar y autorizar antes de persistir.
         ejecutar(onResultado) {
             val actor = sesion.usuario.value
-            if (!PermisosUsuarios.puedeGestionar(actor)) {
+            val token = sesion.token.value
+            if (!PermisosUsuarios.puedeGestionar(actor) || token.isNullOrBlank()) {
                 errorGeneral = "Solo un administrador activo puede registrar cuentas."
                 false
             } else {
-                when (repository.registrar(actor!!.correo, nombre.trim(), ValidadorUsuario.correoNormalizado(correo), perfil, clave)) {
+                when (repository.registrar(actor!!.correo, token, rut.trim().replace(".", "").replace(" ", "").uppercase(), nombre.trim(), ValidadorUsuario.correoNormalizado(correo), perfil, clave)) {
                     ResultadoRegistro.CREADO -> true
                     // Errores de datos específicos se muestran junto al campo que el administrador corrige.
-                    ResultadoRegistro.CORREO_DUPLICADO -> { errores = mapOf("correo" to "Ya existe una cuenta con este correo."); false }
+                    ResultadoRegistro.CORREO_DUPLICADO -> { errores = mapOf("correo" to "Ya existe una cuenta con ese correo o RUT."); false }
                     ResultadoRegistro.NOMBRE_TECNICO_DUPLICADO -> { errores = mapOf("nombre" to "Este nombre identifica a un técnico. Usa un nombre distinto."); false }
                     ResultadoRegistro.NO_AUTORIZADO -> { errorGeneral = "No tienes permiso para registrar cuentas."; false }
                     ResultadoRegistro.DATOS_INVALIDOS -> { errorGeneral = "Revisa los datos de la cuenta."; false }
@@ -50,11 +63,12 @@ class UsuariosViewModel(private val repository: UsuariosRepository, private val 
 
     fun actualizarAcceso(correo: String, perfil: Perfil, activo: Boolean, onResultado: (Boolean) -> Unit) = ejecutar(onResultado) {
         val actor = sesion.usuario.value
+        val token = sesion.token.value
         val destino = usuarios.value.firstOrNull { it.correo == correo }
         val permitido = PermisosUsuarios.puedeModificar(actor, destino, perfil, activo)
-        // La comprobación local mejora el mensaje; el repositorio y SQLite verifican de nuevo al persistir.
-        val guardado = permitido && repository.actualizarAcceso(actor!!.correo, correo, perfil, activo)
-        if (!guardado) errorGeneral = "No se pudo modificar el acceso. Conserva tu propio rol administrador activo y evita nombres de técnicos repetidos."
+        // La comprobación local mejora el mensaje; el microservicio vuelve a verificar el permiso.
+        val guardado = permitido && !token.isNullOrBlank() && repository.actualizarAcceso(actor!!.correo, token, correo, perfil, activo)
+        if (!guardado) errorGeneral = "No se pudo modificar el acceso. Conserva tu propia cuenta de administrador activa."
         guardado
     }
 

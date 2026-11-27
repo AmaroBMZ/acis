@@ -5,11 +5,14 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
 object ApiClient {
-    val auth: AuthApi by lazy {
+    private val retrofit by lazy {
         Retrofit.Builder()
             .baseUrl(ApiConfig.BASE_URL)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
-            .create(AuthApi::class.java)
     }
+
+    val auth: AuthApi by lazy { retrofit.create(AuthApi::class.java) }
+    val ordenes: OrdenesApi by lazy { retrofit.create(OrdenesApi::class.java) }
+    val intervenciones: IntervencionesApi by lazy { retrofit.create(IntervencionesApi::class.java) }
 }

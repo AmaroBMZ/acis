@@ -14,12 +14,13 @@ import androidx.compose.ui.unit.dp
 import com.proyecto.acis.data.Perfil
 import com.proyecto.acis.ui.UsuariosViewModel
 
-/** Administración local de accesos. La lista nunca recibe hashes ni contraseñas. */
+/** Administración de cuentas del servidor. La lista nunca recibe hashes ni contraseñas. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UsuariosScreen(viewModel: UsuariosViewModel, onSalir: () -> Unit, modifier: Modifier = Modifier) {
+    LaunchedEffect(viewModel) { viewModel.refrescar() }
     var registrar by rememberSaveable { mutableStateOf(false) }
-    // Observa la lista publicada después de leer o actualizar SQLite; Compose redibuja las tarjetas.
+    // Observa la lista publicada después de leer o actualizar auth-users.
     val usuarios by viewModel.usuarios.collectAsState()
     // El correo identifica la cuenta seleccionada. null significa que no hay un diálogo abierto.
     var seleccionado by rememberSaveable { mutableStateOf<String?>(null) }
@@ -43,7 +44,8 @@ fun UsuariosScreen(viewModel: UsuariosViewModel, onSalir: () -> Unit, modifier: 
         LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item { Text("Perfil activo: Administrador", style = MaterialTheme.typography.titleMedium) }
-            item { Text("Gestiona el acceso de las cuentas locales. Las órdenes las administra el planificador.") }
+            item { Text("Las cuentas se guardan en el servidor. Las órdenes las administra el planificador.") }
+            viewModel.errorGeneral?.let { mensaje -> item { Text(mensaje, color = MaterialTheme.colorScheme.error) } }
             item {
                 Button(onClick = { viewModel.limpiarErrores(); registrar = true }, enabled = !viewModel.ocupado) {
                     Text("Registrar usuario")
@@ -56,6 +58,7 @@ fun UsuariosScreen(viewModel: UsuariosViewModel, onSalir: () -> Unit, modifier: 
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(cuenta.nombre, style = MaterialTheme.typography.titleMedium)
                         Text(cuenta.correo)
+                        if (cuenta.rut.isNotBlank()) Text("RUT: ${cuenta.rut}")
                         Text("${cuenta.perfil.etiqueta} · ${if (cuenta.activo) "Activa" else "Desactivada"}")
                         OutlinedButton(onClick = {
                             // Abre el editor con los valores guardados y limpia el error del intento anterior.

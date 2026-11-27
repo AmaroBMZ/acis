@@ -10,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
 import com.proyecto.acis.data.Usuario
+import com.proyecto.acis.data.OrdenesRemotoRepository
 import com.proyecto.acis.domain.PermisosOt
 import com.proyecto.acis.data.EstadoOt
 import com.proyecto.acis.data.OrdenTrabajo
@@ -21,6 +22,19 @@ import com.proyecto.acis.domain.DatosCrearOt
 import com.proyecto.acis.domain.ErroresCrearOt
 import com.proyecto.acis.domain.ErroresInforme
 import com.proyecto.acis.domain.ValidadorOt
+import com.proyecto.acis.domain.UsuariosRepository
+import com.proyecto.acis.data.remote.ApiClient
+import com.proyecto.acis.data.remote.CheckInApiRequest
+import com.proyecto.acis.data.remote.InformeApiRequest
+import com.proyecto.acis.data.remote.aDominio
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import retrofit2.HttpException
+import java.io.IOException
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 
 /**
  * ViewModel que gestiona el estado de la UI y coordina las acciones del usuario
@@ -29,13 +43,55 @@ import com.proyecto.acis.domain.ValidadorOt
 class OrdenesViewModel(
     private val repository: OrdenesRepository,
     private val sesion: SesionActual,
+    private val usuariosRemotos: UsuariosRepository? = null,
+    private val ordenesRemotas: OrdenesRemotoRepository? = null,
 ) : ViewModel() {
     // Consulta la identidad compartida; este ViewModel no autentica ni conserva otra copia.
     val usuario: Usuario? get() = sesion.usuario.value
     val ordenes = repository.ordenes
-    val usuarios = repository.usuarios
+    private val _usuarios = MutableStateFlow<List<Usuario>>(repository.usuarios.value)
+    val usuarios = _usuarios.asStateFlow()
+
+    init {
+        // SQLite conserva usuarios demo como respaldo; el catálogo remoto se usa cuando está disponible.
+        viewModelScope.launch {
+            repository.cargar()
+            repository.usuarios.collect { locales ->
+                if (_usuarios.value.isEmpty()) _usuarios.value = locales
+            }
+        }
+        usuariosRemotos?.let { remoto ->
+            viewModelScope.launch {
+                remoto.usuarios.collect { cuentas -> if (cuentas.isNotEmpty()) _usuarios.value = cuentas }
+            }
+            viewModelScope.launch {
+                sesion.token.collect { token ->
+                    if (!token.isNullOrBlank()) {
+                        try {
+                            // Carga SQLite antes de reemplazarla; evita que la carga inicial local
+                            // termine después y sobrescriba la lista que acaba de llegar del servidor.
+                            repository.cargar()
+                            remoto.cargar(token)
+                            val lista = ordenesRemotas?.listar(token)?.map { it.aDominio() }
+                            if (lista != null) repository.reemplazarDesdeServidor(lista)
+                        } catch (cancelada: CancellationException) {
+                            throw cancelada
+                        } catch (_: Exception) {
+                            // La lista local de respaldo queda disponible si el servicio aún no responde.
+                        }
+                    }
+                }
+            }
+        }
+    }
     // El formulario de OT usa el catálogo actual de cuentas; no permite elegir clientes desactivados.
     val clientesActivos get() = usuarios.value.filter { it.activo && it.perfil == Perfil.CLIENTE }
+    val tecnicosActivos get() = usuarios.value.filter { it.activo && it.perfil == Perfil.TECNICO }
+    fun etiquetaTecnico(identificador: String): String =
+        usuarios.value.firstOrNull {
+            it.perfil == Perfil.TECNICO &&
+                (it.correo.equals(identificador, ignoreCase = true) || it.nombre.equals(identificador, ignoreCase = true))
+        }?.nombre ?: identificador
 
     // El valor de respaldo no inicia sesión: los permisos comprueban usuario y rechazan null.
     val perfil: Perfil get() = usuario?.perfil ?: Perfil.PLANIFICADOR
@@ -94,7 +150,11 @@ class OrdenesViewModel(
 
     // Obtiene los errores de validación del formulario de creación
     val erroresCrear: ErroresCrearOt
-        get() = if (mostrarErroresCrear) ValidadorOt.crear(datosCrear, clientesActivos.map { it.correo }) else ErroresCrearOt()
+        get() = if (mostrarErroresCrear) ValidadorOt.crear(
+            datosCrear,
+            clientesActivos.map { it.correo },
+            tecnicosActivos.map { it.correo },
+        ) else ErroresCrearOt()
 
     // Obtiene errores de validación del informe técnico
     fun erroresInforme(id: String, diagnostico: String, actividad: String): ErroresInforme =
@@ -113,6 +173,7 @@ class OrdenesViewModel(
 
     // Asocia la orden al cliente seleccionado por el planificador.
     fun cambiarCliente(valor: String) { datosCrear = datosCrear.copy(clienteCorreo = valor) }
+    fun cambiarTecnico(valor: String) { datosCrear = datosCrear.copy(tecnicoCorreo = valor) }
 
     // Actualiza campos individuales del formulario de creación/edición
     fun cambiarLocal(valor: String) { datosCrear = datosCrear.copy(local = valor) }
@@ -135,6 +196,10 @@ class OrdenesViewModel(
             fecha = partesFecha.getOrNull(0).orEmpty(),
             hora = partesFecha.getOrNull(1).orEmpty(),
             clienteCorreo = orden.clienteCorreo,
+            tecnicoCorreo = usuarios.value.firstOrNull {
+                it.perfil == Perfil.TECNICO &&
+                    (it.correo.equals(orden.tecnico, ignoreCase = true) || it.nombre.equals(orden.tecnico, ignoreCase = true))
+            }?.correo.orEmpty(),
         )
         mostrarErroresCrear = false
     }
@@ -143,13 +208,34 @@ class OrdenesViewModel(
     private suspend fun actualizarOtInterno(id: String): Boolean {
         mostrarErroresCrear = true
         val datos = datosCrear
-        if (ValidadorOt.crear(datos, clientesActivos.map { it.correo }).hayErrores) return false
+        if (ValidadorOt.crear(datos, clientesActivos.map { it.correo }, tecnicosActivos.map { it.correo }).hayErrores) return false
         val tipo = datos.tipo ?: return false
         val prioridad = datos.prioridad ?: return false
-        val actualizado = repository.actualizarDatos(
-            id, datos.local, datos.equipo, datos.descripcion,
-            "${datos.fecha} ${datos.hora}", tipo, prioridad, datos.clienteCorreo,
-        )
+        val tecnico = tecnicosActivos.firstOrNull { it.correo == datos.tecnicoCorreo } ?: return false
+        val actual = ordenes.value.firstOrNull { it.id == id } ?: return false
+        val token = sesion.token.value
+        val actualizado = if (ordenesRemotas != null && !token.isNullOrBlank()) {
+            val respuesta = ordenesRemotas.actualizar(
+                token,
+                actual.copy(
+                    local = datos.local,
+                    equipo = datos.equipo,
+                    descripcion = datos.descripcion,
+                    fechaProgramada = "${datos.fecha} ${datos.hora}",
+                    tipo = tipo,
+                    prioridad = prioridad,
+                    clienteCorreo = datos.clienteCorreo,
+                    tecnico = tecnico.correo,
+                ),
+                tecnico.correo,
+            )
+            repository.guardarDesdeServidor(respuesta.aDominio())
+        } else {
+            repository.actualizarDatos(
+                id, datos.local, datos.equipo, datos.descripcion,
+                "${datos.fecha} ${datos.hora}", tipo, prioridad, datos.clienteCorreo, tecnico.nombre,
+            )
+        }
         if (actualizado) {
             datosCrear = DatosCrearOt()
             mostrarErroresCrear = false
@@ -162,13 +248,25 @@ class OrdenesViewModel(
         mostrarErroresCrear = true
         errorGuardarCrear = false
         val datos = datosCrear
-        if (ValidadorOt.crear(datos, clientesActivos.map { it.correo }).hayErrores) return null
+        if (ValidadorOt.crear(datos, clientesActivos.map { it.correo }, tecnicosActivos.map { it.correo }).hayErrores) return null
         val tipo = datos.tipo ?: return null
         val prioridad = datos.prioridad ?: return null
-        val id = repository.crear(
-            datos.local, datos.equipo, datos.descripcion,
-            "${datos.fecha} ${datos.hora}", tipo, prioridad, datos.clienteCorreo,
-        )
+        val tecnico = tecnicosActivos.firstOrNull { it.correo == datos.tecnicoCorreo } ?: return null
+        val token = sesion.token.value
+        val id = if (ordenesRemotas != null) {
+            if (token.isNullOrBlank()) return null
+            val creada = ordenesRemotas.crear(
+                token, datos.clienteCorreo, datos.local, datos.equipo, datos.descripcion,
+                "${datos.fecha} ${datos.hora}", tipo, prioridad, tecnico.correo,
+            )
+            if (!repository.guardarDesdeServidor(creada.aDominio())) return null
+            creada.codigoOt
+        } else {
+            repository.crear(
+                datos.local, datos.equipo, datos.descripcion,
+                "${datos.fecha} ${datos.hora}", tipo, prioridad, datos.clienteCorreo, tecnico.nombre,
+            )
+        }
         if (id != null) {
             datosCrear = DatosCrearOt()
             mostrarErroresCrear = false
@@ -187,13 +285,37 @@ class OrdenesViewModel(
                 .thenByDescending { it.id.removePrefix("OT-").toIntOrNull() ?: 0 },
         )
 
-    // Acciones del flujo de vida de la OT
-    private suspend fun asignarInterno(id: String) = repository.asignar(id)
-    private suspend fun aceptarInterno(id: String) = repository.aceptar(id)
+    private suspend fun refrescarDesdeServidor(id: String) {
+        val token = sesion.token.value ?: return
+        val remote = ordenesRemotas ?: return
+        repository.guardarDesdeServidor(remote.buscar(token, id).aDominio())
+    }
 
-    // Inicia la visita del técnico y guarda la ubicación obtenida
+    // Acciones del flujo de vida de la OT
+    private suspend fun aceptarInterno(id: String): Boolean {
+        val token = sesion.token.value ?: return false
+        val remote = ordenesRemotas ?: return repository.aceptar(id)
+        return repository.guardarDesdeServidor(remote.cambiarEstado(token, id, EstadoOt.ACEPTADA).aDominio())
+    }
+
+    // Acepta una OT asignada si hace falta y luego registra la llegada con el microservicio de terreno.
     private suspend fun iniciarVisitaInterno(id: String, ubicacion: String?) {
-        val guardado = repository.iniciarVisita(id, ubicacion)
+        val token = sesion.token.value ?: throw IllegalStateException("Sesión vencida")
+        val orden = ordenes.value.firstOrNull { it.id == id } ?: throw IllegalStateException("OT no disponible")
+        if (orden.estado == EstadoOt.ASIGNADA) {
+            val remote = ordenesRemotas
+            if (remote != null) {
+                repository.guardarDesdeServidor(remote.cambiarEstado(token, id, EstadoOt.ACEPTADA).aDominio())
+            } else if (!repository.aceptar(id)) {
+                throw IllegalStateException("No se pudo aceptar la OT")
+            }
+        } else if (orden.estado != EstadoOt.ACEPTADA) {
+            throw IllegalStateException("La OT no está asignada para iniciar")
+        }
+        ApiClient.intervenciones.checkIn("Bearer $token", CheckInApiRequest(id, ubicacion))
+        if (ordenesRemotas != null) refrescarDesdeServidor(id)
+        else repository.iniciarVisita(id, ubicacion)
+        val guardado = ordenes.value.firstOrNull { it.id == id }?.estado == EstadoOt.EN_VISITA
         mensajeDetalle = id to when {
             !guardado -> "No se pudo iniciar la visita."
             ubicacion == null -> "Check-in registrado sin ubicación."
@@ -201,10 +323,16 @@ class OrdenesViewModel(
         }
     }
 
-    private suspend fun aprobarInterno(id: String) = repository.aprobar(id)
+    private suspend fun aprobarInterno(id: String): Boolean {
+        val token = sesion.token.value ?: return false
+        val remote = ordenesRemotas ?: return repository.aprobar(id)
+        return repository.guardarDesdeServidor(remote.cambiarEstado(token, id, EstadoOt.CERRADA).aDominio())
+    }
 
     // Elimina la orden de trabajo seleccionada (CRUD - Delete)
     private suspend fun borrarInterno(id: String): Boolean {
+        val token = sesion.token.value ?: return false
+        ordenesRemotas?.borrar(token, id)
         val borrado = repository.borrar(id)
         mensajeDetalle = id to if (borrado) "Orden eliminada." else "No se pudo eliminar la orden."
         return borrado
@@ -219,8 +347,15 @@ class OrdenesViewModel(
 
     // Asocia la foto capturada a la OT
     private suspend fun guardarFotoInterno(id: String, nombre: String): Boolean {
+        val token = sesion.token.value ?: throw IllegalStateException("Sesión vencida")
+        val archivo = repository.archivoFoto(nombre) ?: return false
+        val parte = MultipartBody.Part.createFormData(
+            "file", archivo.name, archivo.asRequestBody("image/jpeg".toMediaType()),
+        )
+        ApiClient.intervenciones.subirFoto("Bearer $token", id, parte)
         val guardado = repository.guardarFoto(id, nombre)
-        mensajeDetalle = id to if (guardado) "Foto guardada en esta OT."
+        if (guardado && ordenesRemotas != null) refrescarDesdeServidor(id)
+        mensajeDetalle = id to if (guardado) "Foto enviada al servidor y guardada en esta OT."
         else "No se pudo guardar la foto."
         return guardado
     }
@@ -232,8 +367,15 @@ class OrdenesViewModel(
             mensajeDetalle = null
             return false
         }
-        val guardado = repository.enviarInforme(id, diagnostico, actividad, materiales)
-        mensajeDetalle = id to if (guardado) "Informe disponible para revisión en este dispositivo."
+        val token = sesion.token.value ?: throw IllegalStateException("Sesión vencida")
+        ApiClient.intervenciones.informe(
+            "Bearer $token", InformeApiRequest(id, diagnostico, actividad, materiales),
+        )
+        val guardado = if (ordenesRemotas != null) {
+            refrescarDesdeServidor(id)
+            ordenes.value.firstOrNull { it.id == id }?.estado == EstadoOt.PENDIENTE_CONFORMIDAD
+        } else repository.enviarInforme(id, diagnostico, actividad, materiales)
+        mensajeDetalle = id to if (guardado) "Informe enviado al servidor para revisión."
         else "No se pudo finalizar la visita."
         if (guardado) ordenInformeConErrores = null
         return guardado
@@ -246,7 +388,13 @@ class OrdenesViewModel(
             mensajeDetalle = null
             return false
         }
-        val guardado = repository.observar(id, observacion)
+        val token = sesion.token.value ?: return false
+        val guardado = if (ordenesRemotas != null) {
+            repository.guardarDesdeServidor(
+                ordenesRemotas.cambiarEstado(token, id, EstadoOt.OBSERVADA,
+                    observacionCliente = observacion.trim()).aDominio(),
+            )
+        } else repository.observar(id, observacion)
         mensajeDetalle = id to if (guardado) "Observación registrada." else "No se pudo registrar la observación."
         if (guardado) ordenObservacionConError = null
         return guardado
@@ -259,7 +407,13 @@ class OrdenesViewModel(
             mensajeDetalle = null
             return false
         }
-        val guardado = repository.responderObservacion(id, respuesta)
+        val token = sesion.token.value ?: return false
+        val guardado = if (ordenesRemotas != null) {
+            repository.guardarDesdeServidor(
+                ordenesRemotas.cambiarEstado(token, id, EstadoOt.PENDIENTE_CONFORMIDAD,
+                    respuestaTecnico = respuesta.trim()).aDominio(),
+            )
+        } else repository.responderObservacion(id, respuesta)
         mensajeDetalle = id to if (guardado) "Respuesta registrada; el cliente puede revisar nuevamente."
         else "No se pudo enviar la respuesta."
         if (guardado) ordenRespuestaConError = null
@@ -336,19 +490,22 @@ class OrdenesViewModel(
     fun borrar(id: String, onResultado: (Boolean) -> Unit) = ejecutar {
         onResultado(autorizado(id, Perfil.PLANIFICADOR) && borrarInterno(id))
     }
-    // Las acciones públicas repiten la autorización aunque la UI ya oculte botones por perfil.
-    fun asignar(id: String) = ejecutar {
-        // La asignación actual usa un técnico fijo; no asignar a una cuenta desactivada o con otro rol.
-        if (autorizado(id, Perfil.PLANIFICADOR)) {
-            val tecnicoDisponible = usuarios.value.any {
-                it.activo && it.perfil == Perfil.TECNICO && it.nombre == OrdenesRepository.TECNICO_DEMO
-            }
-            if (!tecnicoDisponible) errorGeneral = "El técnico demo no tiene una cuenta técnica activa."
-            else if (!asignarInterno(id)) errorGeneral = "No se pudo asignar la orden."
-        }
-    }
     fun aceptar(id: String) = ejecutar {
-        if (autorizado(id, Perfil.TECNICO) && !aceptarInterno(id)) errorGeneral = "No se pudo aceptar la orden."
+        if (!autorizado(id, Perfil.TECNICO)) return@ejecutar
+        try {
+            if (!aceptarInterno(id)) errorGeneral = "No se pudo aceptar la orden."
+        } catch (cancelada: CancellationException) {
+            throw cancelada
+        } catch (error: HttpException) {
+            errorGeneral = when (error.code()) {
+                401 -> "La sesión venció. Cierra sesión e inicia nuevamente."
+                403 -> "El servidor no reconoce esta OT asignada a tu cuenta. Revisa el correo del técnico asignado."
+                409 -> "El servicio rechazó aceptar esta OT (HTTP 409). Reinicia ot-gestion para cargar la transición actualizada."
+                else -> "El servidor rechazó aceptar la orden (HTTP ${error.code()})."
+            }
+        } catch (_: IOException) {
+            errorGeneral = "No se pudo conectar con ot-gestion. Revisa que el servicio y el gateway estén activos."
+        }
     }
     fun iniciarVisita(id: String, ubicacion: String?) = ejecutar {
         if (autorizado(id, Perfil.TECNICO)) iniciarVisitaInterno(id, ubicacion)
@@ -363,11 +520,39 @@ class OrdenesViewModel(
         if (autorizado(id, Perfil.TECNICO)) guardarBorradorInterno(id, diagnostico, actividad, materiales)
     }
     fun guardarFoto(id: String, nombre: String, onResultado: (Boolean) -> Unit) = ejecutar {
-        onResultado(autorizado(id, Perfil.TECNICO) && guardarFotoInterno(id, nombre))
+        val ok = if (!autorizado(id, Perfil.TECNICO)) false else try {
+            guardarFotoInterno(id, nombre)
+        } catch (cancelada: CancellationException) {
+            throw cancelada
+        } catch (error: HttpException) {
+            errorGeneral = "El servidor rechazó la foto (HTTP ${error.code()}). Comprueba que la OT esté asignada y en visita."
+            false
+        } catch (_: IOException) {
+            errorGeneral = "No se pudo conectar con el servicio para guardar la foto."
+            false
+        } catch (_: Exception) {
+            errorGeneral = "No se pudo guardar la foto. Inténtalo nuevamente."
+            false
+        }
+        onResultado(ok)
     }
     fun finalizarVisita(id: String, diagnostico: String, actividad: String, materiales: String, onResultado: (Boolean) -> Unit = {}) = ejecutar {
         // Propaga tanto errores del formulario como fallos de guardado; ninguno debe cerrar la pantalla.
-        onResultado(autorizado(id, Perfil.TECNICO) && finalizarVisitaInterno(id, diagnostico, actividad, materiales))
+        val ok = if (!autorizado(id, Perfil.TECNICO)) false else try {
+            finalizarVisitaInterno(id, diagnostico, actividad, materiales)
+        } catch (cancelada: CancellationException) {
+            throw cancelada
+        } catch (error: HttpException) {
+            errorGeneral = "El servidor rechazó el informe (HTTP ${error.code()})."
+            false
+        } catch (_: IOException) {
+            errorGeneral = "No se pudo conectar con el servicio para guardar el informe."
+            false
+        } catch (_: Exception) {
+            errorGeneral = "No se pudo guardar el informe. Inténtalo nuevamente."
+            false
+        }
+        onResultado(ok)
     }
     fun observar(id: String, observacion: String, onResultado: (Boolean) -> Unit = {}) = ejecutar {
         // El callback evita navegar antes de que se registre la observación del cliente.

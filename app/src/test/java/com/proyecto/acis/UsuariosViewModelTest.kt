@@ -24,17 +24,18 @@ class UsuariosViewModelTest {
         var falla = false
         var correoRecibido = ""
         var resultado = ResultadoRegistro.CREADO
-        override suspend fun registrar(actor: String, nombre: String, correo: String, perfil: Perfil, clave: String): ResultadoRegistro {
+        override suspend fun cargar(token: String) = true
+        override suspend fun registrar(actor: String, token: String, rut: String, nombre: String, correo: String, perfil: Perfil, clave: String): ResultadoRegistro {
             llamadas++; correoRecibido = correo
             check(!falla)
             return resultado
         }
-        override suspend fun actualizarAcceso(actor: String, correo: String, perfil: Perfil, activo: Boolean): Boolean { llamadas++; return true }
+        override suspend fun actualizarAcceso(actor: String, token: String, correo: String, perfil: Perfil, activo: Boolean): Boolean { llamadas++; return true }
     }
-    @Before fun preparar() { Dispatchers.setMain(dispatcher); sesion.actualizar(admin); fuente.usuarios.value = listOf(admin) }
+    @Before fun preparar() { Dispatchers.setMain(dispatcher); sesion.actualizar(admin, "token-demo"); fuente.usuarios.value = listOf(admin) }
     @After fun limpiar() { Dispatchers.resetMain() }
     private fun registrar(vm: UsuariosViewModel, callback: (Boolean) -> Unit = {}) =
-        vm.registrar("Ana Pérez", " ANA@ACIS.CL ", Perfil.CLIENTE, "Clave1234", "Clave1234", callback)
+        vm.registrar("Ana Pérez", " ANA@ACIS.CL ", "12345678-9", Perfil.CLIENTE, "Clave1234", "Clave1234", callback)
 
     @Test fun normalizaCorreoYEvitaDobleEnvio() = runTest(dispatcher) {
         val vm = UsuariosViewModel(fuente, sesion)
@@ -46,8 +47,8 @@ class UsuariosViewModelTest {
     }
     @Test fun rechazaDatosInvalidosAntesDeEscribir() {
         val vm = UsuariosViewModel(fuente, sesion)
-        vm.registrar("", "mal", Perfil.CLIENTE, "123", "otra") { assertFalse(it) }
-        assertEquals(setOf("nombre", "correo", "clave", "confirmacion"), vm.errores.keys)
+        vm.registrar("", "mal", "rut-mal", Perfil.CLIENTE, "123", "otra") { assertFalse(it) }
+        assertEquals(setOf("nombre", "correo", "rut", "clave", "confirmacion"), vm.errores.keys)
         assertEquals(0, fuente.llamadas)
     }
     @Test fun soloAdminActivoPuedeRegistrar() = runTest(dispatcher) {

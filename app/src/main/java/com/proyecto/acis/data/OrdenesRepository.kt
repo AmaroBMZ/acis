@@ -47,6 +47,7 @@ class OrdenesRepository(context: Context, private val database: OrdenesDb = Orde
         tipo: TipoOt,
         prioridad: PrioridadOt,
         clienteCorreo: String,
+        tecnico: String,
     ): String? {
         if (listOf(local, equipo, descripcion, fecha).any { it.isBlank() }) return null
         if (tipo == TipoOt.SIN_ESPECIFICAR || prioridad == PrioridadOt.SIN_ESPECIFICAR) return null
@@ -61,6 +62,7 @@ class OrdenesRepository(context: Context, private val database: OrdenesDb = Orde
             fechaProgramada = fecha.trim(),
             tipo = tipo,
             prioridad = prioridad,
+            tecnico = tecnico,
             ultimaActualizacion = siguienteMarca(),
             clienteCorreo = clienteCorreo,
         )
@@ -80,6 +82,7 @@ class OrdenesRepository(context: Context, private val database: OrdenesDb = Orde
         tipo: TipoOt,
         prioridad: PrioridadOt,
         clienteCorreo: String,
+        tecnico: String,
     ): Boolean {
         val actual = _ordenes.value.firstOrNull { it.id == id } ?: return false
         // copy crea otra instancia inmutable con los campos modificados.
@@ -92,21 +95,22 @@ class OrdenesRepository(context: Context, private val database: OrdenesDb = Orde
             prioridad = prioridad,
             ultimaActualizacion = siguienteMarca(),
             clienteCorreo = clienteCorreo,
+            tecnico = tecnico,
         )
         if (!database.actualizar(nueva, actual.estado)) return false
         _ordenes.value = _ordenes.value.map { if (it.id == id) nueva else it }
         return true
     }
 
-    // Asigna la OT al técnico de demostración
-    private fun asignarInterno(id: String): Boolean = cambiar(id, EstadoOt.CREADA) {
-        it.copy(estado = EstadoOt.ASIGNADA, tecnico = TECNICO_DEMO)
+    // Asigna la OT al técnico seleccionado por el planificador.
+    private fun asignarInterno(id: String, tecnico: String): Boolean = cambiar(id, EstadoOt.CREADA) {
+        it.copy(estado = EstadoOt.ASIGNADA, tecnico = tecnico)
     }
 
     // El técnico acepta la OT asignada
-    private fun aceptarInterno(id: String): Boolean = cambiar(id, EstadoOt.ASIGNADA) {
-        it.copy(estado = EstadoOt.ACEPTADA)
-    }
+    private fun aceptarInterno(id: String): Boolean =
+        cambiar(id, EstadoOt.CREADA) { it.copy(estado = EstadoOt.ACEPTADA) } ||
+            cambiar(id, EstadoOt.ASIGNADA) { it.copy(estado = EstadoOt.ACEPTADA) }
 
     // Inicia la visita técnica, registra la fecha/hora de check-in y guarda la ubicación
     private fun iniciarVisitaInterno(id: String, ubicacion: String?): Boolean = cambiar(id, EstadoOt.ACEPTADA) {
@@ -375,6 +379,42 @@ class OrdenesRepository(context: Context, private val database: OrdenesDb = Orde
     }
     // API suspendida del repositorio: todas estas entradas pasan por enIo para serializar el acceso.
     suspend fun cargar() = enIo { cargarInterno() }
+    /** Sustituye la caché por la respuesta del backend y conserva el nombre local de las fotos. */
+    suspend fun reemplazarDesdeServidor(ordenesServidor: List<OrdenTrabajo>): Boolean = enIo {
+        val porId = ordenesServidor.associateBy { it.id }
+        _ordenes.value.filter { it.id !in porId }.forEach { obsoleta ->
+            database.borrar(obsoleta.id)
+            if (obsoleta.fotoEvidencia.isNotBlank()) File(fotos, obsoleta.fotoEvidencia).delete()
+        }
+        val sincronizadas = ordenesServidor.map { remota ->
+            val local = _ordenes.value.firstOrNull { it.id == remota.id }
+            remota.copy(fotoEvidencia = local?.fotoEvidencia?.takeIf { it.isNotBlank() } ?: remota.fotoEvidencia)
+        }
+        val guardadas = sincronizadas.all { guardarEnBase(it) }
+        if (guardadas) _ordenes.value = sincronizadas
+        guardadas
+    }
+
+    /** Actualiza una fila de la caché tras una operación confirmada por ot-gestion. */
+    suspend fun guardarDesdeServidor(orden: OrdenTrabajo): Boolean = enIo {
+        val actual = _ordenes.value.firstOrNull { it.id == orden.id }
+        val guardada = guardarEnBase(orden.copy(
+            fotoEvidencia = actual?.fotoEvidencia?.takeIf { it.isNotBlank() } ?: orden.fotoEvidencia,
+        ))
+        if (guardada) _ordenes.value = if (actual == null) {
+            _ordenes.value + orden
+        } else {
+            _ordenes.value.map { if (it.id == orden.id) orden.copy(fotoEvidencia = actual.fotoEvidencia.ifBlank { orden.fotoEvidencia }) else it }
+        }
+        guardada
+    }
+
+    private fun guardarEnBase(orden: OrdenTrabajo): Boolean {
+        val actual = _ordenes.value.firstOrNull { it.id == orden.id }
+        if (actual == null) return database.insertar(orden)
+        return database.actualizar(orden, actual.estado) ||
+            (database.borrar(orden.id) && database.insertar(orden))
+    }
     suspend fun registrarUsuario(actor: String, nombre: String, correo: String, perfil: Perfil, clave: String) = enIo {
         val resultado = database.registrarUsuario(actor, nombre, correo, perfil, clave)
         if (resultado == com.proyecto.acis.domain.ResultadoRegistro.CREADO) _usuarios.value = database.leerUsuarios()
@@ -388,16 +428,21 @@ class OrdenesRepository(context: Context, private val database: OrdenesDb = Orde
         guardado
     }
     suspend fun autenticar(correo: String, clave: String) = enIo { autenticarInterno(correo, clave) }
-    suspend fun crear(local: String, equipo: String, descripcion: String, fecha: String, tipo: TipoOt, prioridad: PrioridadOt, clienteCorreo: String) =
-        enIo { crearInterno(local, equipo, descripcion, fecha, tipo, prioridad, clienteCorreo) }
-    suspend fun actualizarDatos(id: String, local: String, equipo: String, descripcion: String, fecha: String, tipo: TipoOt, prioridad: PrioridadOt, clienteCorreo: String) =
-        enIo { actualizarDatosInterno(id, local, equipo, descripcion, fecha, tipo, prioridad, clienteCorreo) }
-    suspend fun asignar(id: String) = enIo { asignarInterno(id) }
+    suspend fun crear(local: String, equipo: String, descripcion: String, fecha: String, tipo: TipoOt, prioridad: PrioridadOt, clienteCorreo: String, tecnico: String) =
+        enIo { crearInterno(local, equipo, descripcion, fecha, tipo, prioridad, clienteCorreo, tecnico) }
+    suspend fun actualizarDatos(id: String, local: String, equipo: String, descripcion: String, fecha: String, tipo: TipoOt, prioridad: PrioridadOt, clienteCorreo: String, tecnico: String) =
+        enIo { actualizarDatosInterno(id, local, equipo, descripcion, fecha, tipo, prioridad, clienteCorreo, tecnico) }
+    suspend fun asignar(id: String, tecnico: String) = enIo { asignarInterno(id, tecnico) }
     suspend fun aceptar(id: String) = enIo { aceptarInterno(id) }
     suspend fun iniciarVisita(id: String, ubicacion: String?) = enIo { iniciarVisitaInterno(id, ubicacion) }
     suspend fun guardarBorrador(id: String, diagnostico: String, actividad: String, materiales: String) =
         enIo { guardarBorradorInterno(id, diagnostico, actividad, materiales) }
     suspend fun guardarFoto(id: String, nombre: String) = enIo { guardarFotoInterno(id, nombre) }
+
+    // Entrega el archivo existente para que se envíe también al servicio de evidencias.
+    suspend fun archivoFoto(nombre: String): File? = enIo {
+        if (nombre != File(nombre).name) null else File(fotos, nombre).takeIf { it.isFile && it.length() > 0L }
+    }
     suspend fun enviarInforme(id: String, diagnostico: String, actividad: String, materiales: String) =
         enIo { enviarInformeInterno(id, diagnostico, actividad, materiales) }
     suspend fun observar(id: String, observacion: String) = enIo { observarInterno(id, observacion) }

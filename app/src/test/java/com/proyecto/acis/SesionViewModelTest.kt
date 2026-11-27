@@ -3,6 +3,7 @@ package com.proyecto.acis
 import com.proyecto.acis.data.Perfil
 import com.proyecto.acis.data.Usuario
 import com.proyecto.acis.domain.AutenticacionRepository
+import com.proyecto.acis.domain.SesionAutenticada
 import com.proyecto.acis.session.SesionActual
 import com.proyecto.acis.ui.SesionViewModel
 import kotlinx.coroutines.CompletableDeferred
@@ -30,11 +31,11 @@ class SesionViewModelTest {
     private class FuenteSimulada : AutenticacionRepository {
         var fallaCarga = false
         var fallaAcceso = false
-        var resultado: Usuario? = null
+        var resultado: SesionAutenticada? = null
         var llamadas = 0
         var espera: CompletableDeferred<Unit>? = null
         override suspend fun preparar() { check(!fallaCarga) }
-        override suspend fun autenticar(correo: String, clave: String): Usuario? {
+        override suspend fun autenticar(correo: String, clave: String): SesionAutenticada? {
             llamadas++
             espera?.await()
             check(!fallaAcceso)
@@ -68,7 +69,7 @@ class SesionViewModelTest {
         advanceUntilIdle()
         assertNull(sesion.usuario.value)
         assertNotNull(vm.estado.value.error)
-        fuente.resultado = cuenta
+        fuente.resultado = SesionAutenticada(cuenta)
         vm.iniciarSesion("cliente", "correcta")
         advanceUntilIdle()
         assertEquals(cuenta, sesion.usuario.value)
@@ -77,7 +78,7 @@ class SesionViewModelTest {
     }
 
     @Test fun cuentaInactivaNoAbreSesion() = runTest(dispatcher) {
-        fuente.resultado = cuenta.copy(activo = false)
+        fuente.resultado = SesionAutenticada(cuenta.copy(activo = false))
         val vm = SesionViewModel(fuente, sesion)
         advanceUntilIdle()
         vm.iniciarSesion("cliente", "clave")
@@ -96,7 +97,7 @@ class SesionViewModelTest {
         assertNotNull(vm.estado.value.error)
         assertNull(vm.usuario.value)
         fuente.fallaAcceso = false
-        fuente.resultado = cuenta
+        fuente.resultado = SesionAutenticada(cuenta)
         vm.iniciarSesion("cliente", "clave")
         advanceUntilIdle()
         assertEquals(cuenta, vm.usuario.value)
@@ -105,7 +106,7 @@ class SesionViewModelTest {
     @Test fun accesoPendienteNoAdmiteDuplicadosNiCerrarAntesDeTerminar() = runTest(dispatcher) {
         val vm = SesionViewModel(fuente, sesion)
         advanceUntilIdle()
-        fuente.resultado = cuenta
+        fuente.resultado = SesionAutenticada(cuenta)
         fuente.espera = CompletableDeferred()
         vm.iniciarSesion("cliente", "clave")
         runCurrent()

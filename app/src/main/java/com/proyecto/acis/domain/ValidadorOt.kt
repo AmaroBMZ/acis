@@ -20,6 +20,7 @@ data class DatosCrearOt(
     val fecha: String = "",
     val hora: String = "",
     val clienteCorreo: String = CuentasPrueba.CLIENTE,
+    val tecnicoCorreo: String = "tecnico@acis.cl",
 )
 
 /**
@@ -34,10 +35,11 @@ data class ErroresCrearOt(
     val fecha: String? = null,
     val hora: String? = null,
     val clienteCorreo: String? = null,
+    val tecnicoCorreo: String? = null,
 ) {
     // Retorna true si al menos un campo tiene un mensaje de error
     val hayErrores: Boolean
-        get() = listOf(local, equipo, descripcion, tipo, prioridad, fecha, hora, clienteCorreo).any { it != null }
+        get() = listOf(local, equipo, descripcion, tipo, prioridad, fecha, hora, clienteCorreo, tecnicoCorreo).any { it != null }
 }
 
 /**
@@ -56,8 +58,12 @@ data class ErroresInforme(
  */
 object ValidadorOt {
     // Devuelve mensajes por campo; null significa que ese campo cumple su regla.
-    // El ViewModel pasa los correos de clientes activos de SQLite. El valor por defecto usa las demos.
-    fun crear(datos: DatosCrearOt, clientes: List<String> = CuentasPrueba.usuarios.filter { it.perfil == Perfil.CLIENTE }.map { it.correo }) = ErroresCrearOt(
+    // El ViewModel pasa los usuarios activos del catálogo cargado; los valores por defecto son demos.
+    fun crear(
+        datos: DatosCrearOt,
+        clientes: List<String> = CuentasPrueba.usuarios.filter { it.perfil == Perfil.CLIENTE }.map { it.correo },
+        tecnicos: List<String> = CuentasPrueba.usuarios.filter { it.perfil == Perfil.TECNICO }.map { it.correo },
+    ) = ErroresCrearOt(
         local = if (datos.local.isBlank()) "Ingresa el local" else null,
         equipo = if (datos.equipo.isBlank()) "Ingresa el equipo" else null,
         descripcion = if (datos.descripcion.isBlank()) "Describe el trabajo" else null,
@@ -66,6 +72,7 @@ object ValidadorOt {
         fecha = if (!fechaValida(datos.fecha)) "Selecciona una fecha válida (dd/MM/yyyy)" else null,
         hora = if (!Regex("([01][0-9]|2[0-3]):[0-5][0-9]").matches(datos.hora)) "Selecciona una hora válida (HH:mm)" else null,
         clienteCorreo = if (datos.clienteCorreo !in clientes) "Selecciona un cliente activo" else null,
+        tecnicoCorreo = if (datos.tecnicoCorreo !in tecnicos) "Selecciona un técnico activo" else null,
     )
 
     // Comprueba formato exacto y calendario real; no exige que la fecha esté en el futuro.

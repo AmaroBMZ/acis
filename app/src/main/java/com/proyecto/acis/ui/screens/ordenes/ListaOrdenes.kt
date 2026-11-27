@@ -6,7 +6,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -64,6 +63,7 @@ import com.proyecto.acis.ui.components.*
 internal fun ListaOrdenesAdaptada(
     todasOrdenes: List<OrdenTrabajo>,
     perfil: Perfil,
+    etiquetaTecnico: (String) -> String = { it },
     onSeleccionar: (String) -> Unit,
 ) {
     // Los filtros se conservan al recrear la pantalla; se aplican sobre las órdenes ya autorizadas.
@@ -79,7 +79,7 @@ internal fun ListaOrdenesAdaptada(
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         // El saludo y el nombre ACIS dejan claro en qué perfil está trabajando la persona.
         item {
@@ -239,25 +239,10 @@ internal fun ListaOrdenesAdaptada(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(IntrinsicSize.Min),
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
-                    // Franja vertical de color a la izquierda estilo bloque de asignatura (|)
-                    Surface(
-                        modifier = Modifier
-                            .width(6.dp)
-                            .fillMaxHeight(),
-                        color = colorIndicador,
-                    ) {}
-
-                    Column(
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -288,7 +273,7 @@ internal fun ListaOrdenesAdaptada(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                        Text("${orden.equipo}${if (orden.tecnico.isNotBlank()) " · ${orden.tecnico}" else ""}",
+                        Text("Técnico: ${if (orden.tecnico.isNotBlank()) etiquetaTecnico(orden.tecnico) else "Sin asignar"}",
                             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
                             PrioridadBadge(orden.prioridad)
@@ -298,7 +283,6 @@ internal fun ListaOrdenesAdaptada(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                    }
                 }
             }
         }

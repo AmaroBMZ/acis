@@ -143,7 +143,7 @@ internal fun DetalleOrden(
                     PrioridadBadge(orden.prioridad)
                     CampoDetalle("Fecha programada", orden.fechaProgramada)
                     CampoDetalle("Trabajo solicitado", orden.descripcion)
-                    if (orden.tecnico.isNotBlank()) CampoDetalle("Técnico", orden.tecnico)
+                    if (orden.tecnico.isNotBlank()) CampoDetalle("Técnico", viewModel.etiquetaTecnico(orden.tecnico))
                     if (orden.checkIn.isNotBlank()) CampoDetalle("Check-in", orden.checkIn)
                     if (orden.ubicacionCheckIn.isNotBlank()) CampoDetalle("Ubicación del check-in", orden.ubicacionCheckIn)
                     if (orden.checkOut.isNotBlank()) CampoDetalle("Check-out", orden.checkOut)
@@ -172,22 +172,23 @@ internal fun DetalleOrden(
                 }
             }
         }
-        // Asignación y edición por el Planificador (CRUD - Update)
-        if (perfil == Perfil.PLANIFICADOR) {
-            if (orden.estado == EstadoOt.CREADA) {
-                item { Button(onClick = { viewModel.asignar(orden.id) }, modifier = Modifier.fillMaxWidth()) { Text("Asignar a técnico demo") } }
-            }
+        // El planificador elige el técnico al crear/editar; no se ofrece otra asignación al final.
+        if (perfil == Perfil.PLANIFICADOR && orden.estado in setOf(EstadoOt.CREADA, EstadoOt.ASIGNADA)) {
             item {
                 OutlinedButton(onClick = onEditar, modifier = Modifier.fillMaxWidth()) {
                     Text("Editar datos de esta OT")
                 }
             }
         }
-        // Aceptación por el Técnico
-        if (perfil == Perfil.TECNICO && orden.estado == EstadoOt.ASIGNADA) {
-            item { Button(onClick = { viewModel.aceptar(orden.id) }, modifier = Modifier.fillMaxWidth()) { Text("Aceptar OT") } }
+        // El técnico acepta primero la OT; el check-in queda como una acción separada.
+        if (perfil == Perfil.TECNICO && orden.estado in setOf(EstadoOt.CREADA, EstadoOt.ASIGNADA)) {
+            item {
+                Button(onClick = { viewModel.aceptar(orden.id) }, enabled = !viewModel.ocupado,
+                    modifier = Modifier.fillMaxWidth()) {
+                    Text(if (viewModel.ocupado) "Aceptando orden..." else "Aceptar orden")
+                }
+            }
         }
-        // Check-in con ubicación por el Técnico
         if (perfil == Perfil.TECNICO && orden.estado == EstadoOt.ACEPTADA) {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -198,7 +199,7 @@ internal fun DetalleOrden(
                             == PackageManager.PERMISSION_GRANTED) iniciarConUbicacion()
                         else permisoUbicacion.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
                     }, enabled = !buscandoUbicacion, modifier = Modifier.fillMaxWidth()) {
-                        Text(if (buscandoUbicacion) "Buscando ubicación..." else "Iniciar visita y registrar check-in")
+                        Text(if (buscandoUbicacion) "Buscando ubicación..." else "Iniciar orden y registrar check-in")
                     }
                 }
             }
@@ -275,7 +276,7 @@ internal fun DetalleOrden(
             }, modifier = Modifier.fillMaxWidth()) { Text("Enviar respuesta") } }
         }
         // Opción para eliminar la OT (disponible para el Planificador - CRUD Delete)
-        if (perfil == Perfil.PLANIFICADOR) {
+        if (perfil == Perfil.PLANIFICADOR && orden.estado == EstadoOt.CREADA) {
             item {
                 var mostrarConfirmacion by rememberSaveable(orden.id) { mutableStateOf(false) }
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -316,6 +317,9 @@ internal fun DetalleOrden(
                     }
                 }
             }
+        }
+        viewModel.errorGeneral?.let { error ->
+            item { Text(error, color = MaterialTheme.colorScheme.error) }
         }
         if (mensaje.isNotBlank()) item { Text(mensaje, color = MaterialTheme.colorScheme.primary) }
     }

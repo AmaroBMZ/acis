@@ -8,7 +8,7 @@ Aplicación móvil Android nativa desarrollada en **Kotlin** con **Jetpack Compo
 
 **ACIS Servicios Técnicos Ltda.** presta servicios de ingeniería, instalación, reparación y mantenimiento preventivo/correctivo para sistemas de climatización (HVAC - aire acondicionado, chillers, fancoils) y equipos de refrigeración comercial (cámaras frigoríficas, congeladores) en locales comerciales, supermercados e industrias.
 
-Esta aplicación reemplaza los registros en papel y mensajería por una solución móvil que guarda las órdenes **localmente, sin necesidad de conexión a internet**, conservando el estado actual y los datos registrados del trabajo en terreno.
+Esta aplicación reemplaza los registros en papel y mensajería por una solución móvil que gestiona órdenes mediante microservicios. SQLite conserva una caché local; las operaciones principales requieren conexión al gateway.
 
 ---
 
@@ -18,15 +18,15 @@ La aplicación ofrece cuatro roles locales: administrador, planificador, técnic
 
 ### Administración de cuentas
 
-El administrador registra cuentas, consulta las existentes, cambia sus roles y las activa o desactiva. No administra órdenes y no puede desactivar su propia cuenta ni quitarse el rol administrador. Los cambios se guardan en SQLite y se aplican al siguiente inicio de sesión de la cuenta modificada. La gestión mediante backend sigue pendiente.
+El administrador registra cuentas, consulta las existentes, cambia sus roles y las activa o desactiva mediante `auth-users`. No administra órdenes y no puede desactivar su propia cuenta ni quitarse el rol administrador. Las cuentas quedan guardadas en el backend.
 
 **Registrar usuario** solicita nombre completo, correo, rol, contraseña inicial y confirmación. La cuenta queda activa y puede ingresar con esas credenciales. Se validan campos, correo único (sin distinguir mayúsculas) y contraseña de 8 a 128 caracteres con letras y números; se guarda únicamente sal y hash PBKDF2. Cancelar descarta el alta. No existe registro público, recuperación ni cambio obligatorio de contraseña inicial.
 
-Las OT todavía identifican al técnico por nombre y asignan nuevas órdenes al técnico demo. Para evitar compartir esa identidad, el alta rechaza nombres que colisionen con un técnico y el cambio de rol también protege ese caso. Registrar otro técnico permite su acceso, pero la selección de técnico al asignar órdenes queda pendiente. Esta etapa no incorpora borrado físico de cuentas: se conserva la desactivación.
+Las órdenes guardan el correo del técnico asignado. El planificador puede seleccionar técnicos activos del catálogo remoto. Esta etapa no incorpora borrado físico de cuentas: se conserva la desactivación.
 
 ### 1. Perfil Planificador
 - **Creación de OTs**: Formulario para registrar cliente, local, equipo, descripción del trabajo, tipo (preventiva/correctiva), prioridad y fecha/hora programada. Después del primer intento de guardar, los errores se actualizan al editar los campos.
-- **Asignación**: Asigna la orden de trabajo creada al técnico de demostración.
+- **Asignación**: Selecciona un cliente y un técnico activo al crear o editar la orden.
 - **Botón Flotante (FAB)**: Acceso directo `+` con estilo Material 3 para crear nuevas órdenes.
 
 ### 2. Perfil Técnico
@@ -122,15 +122,14 @@ Rama: `mejoras/login-persistencia-pruebas`. Ejecutar **debug** instala `com.proy
 
 | Rol | Correo | Contraseña |
 | --- | --- | --- |
-| Administrador | admin@acis.cl | Acis2026! |
-| Planificador | planificador@acis.cl | Acis2026! |
-| Técnico | tecnico@acis.cl | Acis2026! |
-| Cliente | cliente@acis.cl | Acis2026! |
-| Segundo cliente | cliente2@acis.cl | Acis2026! |
+| Administrador | admin@acis.cl | Admin123! |
+| Planificador | planificador@acis.cl | Planif123! |
+| Técnico | tecnico@acis.cl | Tecnico123! |
+| Cliente | cliente@acis.cl | Cliente123! |
 
-El segundo cliente comienza sin órdenes. Al crear o editar, el planificador selecciona el cliente propietario. Las órdenes de instalaciones anteriores quedan sin cliente hasta asignarlo explícitamente. Las siete órdenes de demostración se crean solo en la primera inicialización.
+Estas credenciales corresponden a las cuentas activas de prueba de `auth-users` cuando su base se inicializa vacía. El usuario `inactivo@acis.cl` se omite porque está desactivado. Al crear o editar, el planificador selecciona el cliente propietario.
 
-La lista permite buscar por OT/local/equipo y filtrar por estado. Para cambiar de cuenta, usar **Salir**. Es una demostración local sin backend ni sincronización entre dispositivos.
+La lista permite buscar por OT/local/equipo y filtrar por estado. Para cambiar de cuenta, usar **Salir**. La lista se carga desde el backend y se conserva una caché SQLite para la interfaz.
 
 - [Criterios de aceptación y recorrido manual](docs/CRITERIOS_ACEPTACION.md)
 - [Comparación con los ejemplos del profesor y decisión de base de datos](docs/REVISION_PROFESOR.md)
@@ -148,7 +147,7 @@ La lista permite buscar por OT/local/equipo y filtrar por estado. Para cambiar d
 
 Al pulsar **Salir**, los cuatro roles ven **¿Cerrar sesión?**, con **Cancelar** y **Cerrar sesión**. Cancelar, volver atrás o tocar fuera conserva la sesión y los borradores. Solo confirmar limpia los borradores de órdenes y pide a `SesionViewModel` borrar la identidad. Se muestra el login y se conservan los registros SQLite; no se permite salir durante una escritura.
 
-Esta es una separación gradual: `AutenticacionLocalRepository` y `UsuariosLocalRepository` adaptan las operaciones existentes de `OrdenesRepository`, conservando su inicialización y Mutex. La administración tiene su propio `UsuariosViewModel` y contrato `UsuariosRepository`; `ValidadorUsuario` concentra las reglas de alta. Separar internamente la persistencia de órdenes y cuentas es una etapa posterior. No se modificó el esquema SQLite v6 ni se incorporaron backend o API.
+La administración tiene su propio `UsuariosViewModel` y contrato `UsuariosRepository`; `ValidadorUsuario` concentra las reglas de alta. Las cuentas y las órdenes se consultan a través de repositorios remotos; la persistencia local de órdenes funciona como caché.
 
 Para estudiar el recorrido: `LoginScreen` → `SesionViewModel` → `AutenticacionRepository` → `AutenticacionLocalRepository` → repositorio/SQLite. La identidad resultante se publica en `SesionActual`; las órdenes consultan esa misma identidad para aplicar permisos.
 
@@ -187,7 +186,7 @@ Orden recomendado de lectura:
 4. `OrdenesDb.actualizarAcceso` relee las cuentas y vuelve a comprobar los permisos dentro de una transacción. Solo modifica rol y activación; conserva la contraseña y los datos de las órdenes.
 5. Si se guarda, el repositorio recarga su `StateFlow` de usuarios y el callback devuelve `true`: se actualiza la lista y se cierra el diálogo. Si la operación devuelve `false`, el editor conserva el borrador y muestra el error. Ante una excepción de la operación, `UsuariosViewModel.ejecutar` publica `errorGeneral`, libera `ocupado` y llama al callback con `false`; el diálogo activa su indicador `error` y muestra el mensaje. La cancelación de corutina se propaga. Este manejo ya está implementado; su comprobación visual ante un fallo de guardado sigue pendiente.
 
-`actor` es quien solicita el cambio; `destino` es la cuenta modificada. Un administrador activo puede cambiar otras cuentas, pero no desactivarse ni quitarse su propio rol. Cambiar el rol de una cuenta no reasigna sus órdenes. El técnico de demostración solo puede recibir nuevas asignaciones si sigue activo y tiene rol técnico.
+`actor` es quien solicita el cambio; `destino` es la cuenta modificada. Un administrador activo puede cambiar otras cuentas, pero no desactivarse ni quitarse su propio rol. Cambiar el rol de una cuenta no reasigna sus órdenes.
 
 ### Navegación después de guardar
 
@@ -244,9 +243,8 @@ En edición, `LaunchedEffect(orden.id)` carga la OT al entrar en composición o 
 
 | Estado de origen | Acción | Rol | Estado resultante |
 | --- | --- | --- | --- |
-| `CREADA` | Asignar al técnico demo | Planificador | `ASIGNADA` |
-| `ASIGNADA` | Aceptar encargo | Técnico asignado | `ACEPTADA` |
-| `ACEPTADA` | Registrar check-in | Técnico asignado | `EN_VISITA` |
+| `CREADA` | Crear o editar la OT con un técnico elegido | Planificador | `ASIGNADA` |
+| `ASIGNADA` | Iniciar la OT y registrar check-in (la app acepta primero) | Técnico asignado | `EN_VISITA` |
 | `EN_VISITA` | Guardar borrador o foto | Técnico asignado | `EN_VISITA` |
 | `EN_VISITA` | Finalizar con diagnóstico y actividad | Técnico asignado | `PENDIENTE_CONFORMIDAD` |
 | `PENDIENTE_CONFORMIDAD` | Registrar observación | Cliente propietario | `OBSERVADA` |
@@ -255,21 +253,21 @@ En edición, `LaunchedEffect(orden.id)` carga la OT al entrar en composición o 
 
 El ViewModel comprueba identidad y rol mediante `PermisosOt`. El repositorio comprueba el estado requerido y SQLite condiciona la actualización al estado anterior. Son controles distintos: poder ver una orden no autoriza cualquier acción sobre ella.
 
-El planificador puede crear, editar y eliminar órdenes. La implementación actual no restringe la edición o eliminación a un estado particular. El administrador puede registrar técnicos, pero la asignación sigue usando el técnico de demostración fijo: falta adaptar ese flujo para seleccionar técnicos creados desde la app. Las cuentas pueden desactivarse, pero no borrarse.
+El planificador elige cliente y técnico al crear o editar una OT; la selección proviene de las cuentas remotas activas. La edición se limita a órdenes `CREADA` o `ASIGNADA`, y la eliminación a `CREADA`. Las cuentas pueden desactivarse, pero no borrarse.
 
 ## Persistencia, formularios y recursos del dispositivo
 
 - **SQLite versión 6:** `acis_ordenes.db` contiene `ordenes`, `usuarios` y `configuracion`. La migración desde v5 agrega activación de cuentas y el administrador demo, conservando órdenes y contraseñas anteriores. No se utiliza Room.
 - **Inicialización:** si corresponde, se importan órdenes antiguas desde SharedPreferences o se insertan siete ejemplos. La marca `inicializada` evita recrearlos después de borrar todas las órdenes.
-- **Contraseñas:** se almacena una sal aleatoria y un hash derivado con PBKDF2, 120 000 iteraciones y 256 bits. Las cuentas y la clave de demostración están publicadas en el proyecto; el registro es administrativo y local, sin autenticación remota.
-- **Sesión:** el usuario autenticado vive en `SesionActual`, compartida por los ViewModels. No se implementa un inicio de sesión persistente tras terminar el proceso. Salir limpia los borradores en memoria, pero conserva las órdenes guardadas.
-- **Validación:** crear/editar exige local, equipo, descripción, tipo, prioridad, fecha real `dd/MM/yyyy`, hora `HH:mm` y una cuenta cliente activa. El selector y la validación usan las cuentas cargadas desde SQLite. No se exige que la fecha sea futura. Los errores de creación se activan después del intento de guardar y se recalculan al editar.
+- **Autenticación:** el inicio de sesión y registro se realizan en `auth-users`; la app envía la clave al servicio y recibe un token JWT. La contraseña se protege en el backend.
+- **Sesión:** el usuario autenticado vive en `SesionActual`, compartida por los ViewModels. Salir limpia los borradores en memoria; la caché SQLite se conserva en el dispositivo.
+- **Validación:** crear/editar exige local, equipo, descripción, tipo, prioridad, fecha real `dd/MM/yyyy`, hora `HH:mm` y una cuenta cliente activa. El selector y la validación usan el catálogo remoto. No se exige que la fecha sea futura. Los errores de creación se activan después del intento de guardar y se recalculan al editar.
 - **Informe:** diagnóstico y actividad son obligatorios al finalizar; materiales y fotografía son opcionales. Escribir en el formulario no equivale a persistirlo: hay que guardar el borrador o finalizar.
 - **Fotografía:** se conserva una referencia por OT en SQLite y el archivo en `filesDir/evidencias`. `FileProvider` entrega a la cámara una URI para escribir la imagen. Al reemplazar una foto se intenta eliminar la anterior después de guardar la nueva referencia.
 - **Ubicación:** se solicita permiso aproximado, se consulta el proveedor de red y se espera hasta 12 segundos. La falta de permiso o ubicación no bloquea el check-in.
 - **Búsqueda:** filtra por identificador, local o equipo y permite combinar un estado. La lista se ordena por última actualización; la tarjeta destacada toma la primera coincidencia, aunque su texto diga “última orden creada”.
 
-Los datos se gestionan localmente: no hay backend ni sincronización de órdenes entre dispositivos. La conservación del estado actual tampoco constituye un historial completo de auditoría: una actualización sustituye los valores de la fila.
+Las órdenes principales se gestionan en el backend y se sincronizan con la caché local. La conservación del estado actual tampoco constituye un historial completo de auditoría: una actualización sustituye los valores de la fila.
 
 ## Pruebas y ejecución desde PowerShell
 
@@ -322,15 +320,21 @@ Las pruebas de persistencia utilizan bases temporales con nombres `test-<UUID>.d
 - Los casos JVM se ejecutaron correctamente. El caso instrumentado de registro, la cancelación de salida y los recorridos de los cuatro roles compilaron, pero **requieren ejecución en emulador o dispositivo**; compilar el APK no confirma sus resultados.
 - Falta medir la cobertura de lógica y contrastarla con el **80 % exigido por la pauta**. Tener pruebas aprobadas no acredita por sí solo ese porcentaje.
 
-## Pendientes para la evaluación final
+## Integración actual con los microservicios
 
-Los cuatro roles y el registro administrativo están implementados localmente. Recuperación de contraseña, edición del perfil propio, backend propio con microservicios y base de datos externa, CRUD remoto y API externa mediante Retrofit quedan para una etapa posterior, según lo acordado.
+La aplicación ya inicia sesión contra `auth-users`, consulta y administra usuarios, y crea, consulta, edita y elimina órdenes mediante el gateway y `ot-gestion`. El selector de órdenes permite elegir clientes y técnicos registrados. El check-in, el informe y la foto se envían a `terain-photo`; los datos de intervención y el nombre de la evidencia se sincronizan con la orden en `ot-gestion`.
 
-La administración de cuentas tiene `UsuariosViewModel` y `UsuariosRepository`, aunque ambos flujos aún comparten internamente `OrdenesRepository` y `OrdenesDb`; esa separación de persistencia y el contrato de órdenes pueden abordarse después. El administrador desactiva cuentas, pero no las borra. También falta cambiar el flujo de asignación para elegir técnicos registrados desde la app en lugar del técnico de demostración.
+## Pendientes para la entrega de la pauta
 
-También falta medir y alcanzar el 80 % de cobertura de lógica: el número de pruebas aprobadas no demuestra ese porcentaje. La APK disponible es debug; la entrega final requiere APK release firmado y documentación de endpoints, ejecución de servicios y firma.
+- Integrar una API pública externa mediante Retrofit; la app por ahora se comunica con sus propios microservicios.
+- Medir la cobertura y alcanzar el 80 % exigido. Las pruebas aprobadas en ejecuciones anteriores no acreditan ese porcentaje para esta versión.
+- Generar y entregar una APK release firmada. En el proyecto solo se encontró una APK debug.
+- Adjuntar evidencia de pruebas en dispositivo, de la ejecución de los servicios, de endpoints y de la firma de la APK. La compilación de Android de esta revisión no pudo completarse porque Gradle no logró conectarse a su proceso local.
+- Revisar este README y `docs/VALIDACION.md` antes de entregar: contienen resultados históricos que no representan una ejecución de esta versión.
 
-En interfaz sigue pendiente abrir los selectores de edición con la fecha/hora guardada y comprobar la visibilidad del aviso de éxito al navegar. El manejo del error administrativo ante excepciones ya se incorporó en `UsuariosViewModel`: notifica el fallo al callback y permite mostrar el mensaje sin cerrar el diálogo. Falta verificar visualmente ese recorrido; ya no se lista como una corrección de código pendiente.
+La administración de cuentas tiene `UsuariosViewModel` y `UsuariosRepository`, aunque ambos flujos aún comparten internamente `OrdenesRepository` y `OrdenesDb`; esa separación de persistencia puede mejorarse. El administrador desactiva cuentas, pero no las borra.
+
+El acceso a cámara y ubicación está implementado para la evidencia y el check-in. Falta medir su funcionamiento en un dispositivo en la versión actual.
 
 **Pregunta para estudiar:** si la pantalla ya oculta los botones según el perfil, ¿por qué el ViewModel vuelve a comprobar los permisos y el repositorio comprueba además el estado de la OT?
 

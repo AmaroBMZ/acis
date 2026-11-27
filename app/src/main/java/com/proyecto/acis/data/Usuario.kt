@@ -6,7 +6,14 @@ import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 
 // Identidad de la sesión; no incluye la contraseña ni el hash almacenado en SQLite.
-data class Usuario(val correo: String, val nombre: String, val perfil: Perfil, val activo: Boolean = true)
+data class Usuario(
+    val correo: String,
+    val nombre: String,
+    val perfil: Perfil,
+    val activo: Boolean = true,
+    val idRemoto: Long? = null,
+    val rut: String = "",
+)
 
 /** Cuentas locales para la evaluación. No constituyen autenticación contra un servidor. */
 object CuentasPrueba {

@@ -19,6 +19,7 @@ import com.proyecto.acis.ui.UsuariosViewModel
 fun RegistroUsuarioDialog(viewModel: UsuariosViewModel, onCerrar: () -> Unit) {
     // Datos no secretos sobreviven a una recreación; las contraseñas se mantienen solo en memoria.
     var nombre by rememberSaveable { mutableStateOf("") }
+    var rut by rememberSaveable { mutableStateOf("") }
     var correo by rememberSaveable { mutableStateOf("") }
     var rol by rememberSaveable { mutableStateOf(Perfil.CLIENTE.name) }
     var clave by remember { mutableStateOf("") }
@@ -29,9 +30,10 @@ fun RegistroUsuarioDialog(viewModel: UsuariosViewModel, onCerrar: () -> Unit) {
         title = { Text("Registrar usuario") },
         text = {
             // El contenido se desplaza para que todos los campos sigan accesibles con el teclado abierto.
-            Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.heightIn(max = 500.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("La cuenta quedará activa. Entrega la contraseña inicial al usuario para que pueda ingresar.")
                 CampoRegistro("Nombre completo", nombre, { nombre = it }, viewModel.errores["nombre"], !viewModel.ocupado)
+                CampoRegistro("RUT (ej. 12345678-9)", rut, { rut = it }, viewModel.errores["rut"], !viewModel.ocupado)
                 CampoRegistro("Correo del usuario", correo, { correo = it }, viewModel.errores["correo"], !viewModel.ocupado, KeyboardType.Email)
                 Text("Rol de la cuenta")
                 Perfil.entries.forEach { perfil ->
@@ -48,7 +50,7 @@ fun RegistroUsuarioDialog(viewModel: UsuariosViewModel, onCerrar: () -> Unit) {
         confirmButton = {
             TextButton(enabled = !viewModel.ocupado, onClick = {
                 // El diálogo se cierra solo tras confirmar el guardado; un fallo conserva lo ingresado.
-                viewModel.registrar(nombre, correo, Perfil.valueOf(rol), clave, confirmacion) { creado ->
+                viewModel.registrar(nombre, correo, rut, Perfil.valueOf(rol), clave, confirmacion) { creado ->
                     if (creado) { clave = ""; confirmacion = ""; onCerrar() }
                 }
             }) { Text("Crear cuenta") }

@@ -14,7 +14,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 
-// Pantalla de acceso local: recoge credenciales y delega la autenticación al ViewModel.
+// Pantalla de acceso remoto: recoge credenciales y delega la autenticación al ViewModel.
 @Composable
 fun LoginScreen(viewModel: SesionViewModel, modifier: Modifier = Modifier) {
     val estado by viewModel.estado.collectAsState()
@@ -57,20 +57,18 @@ fun LoginScreen(viewModel: SesionViewModel, modifier: Modifier = Modifier) {
             enabled = estado.cargado && !estado.ocupado && correo.isNotBlank() && clave.isNotBlank(),
             modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp), shape = RoundedCornerShape(28.dp)) { Text("Ingresar") }
 
-        // Las cuentas demo se agrupan en una tarjeta aparte del formulario.
+        // Credenciales de prueba inicializadas por auth-users.
         Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Cuentas de prueba", style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
-                Text("Administrador, planificador, técnico o cliente.", color = MaterialTheme.colorScheme.onSecondaryContainer)
-                Text("admin@acis.cl · planificador@acis.cl\ntecnico@acis.cl · cliente@acis.cl · cliente2@acis.cl",
-                    color = MaterialTheme.colorScheme.onSecondaryContainer)
-                HorizontalDivider()
-                Text("Contraseña de demostración", color = MaterialTheme.colorScheme.onSecondaryContainer)
-                Text("Acis2026!", style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium)
+                Text("Administrador · admin@acis.cl · Admin123!", color = MaterialTheme.colorScheme.onSecondaryContainer)
+                Text("Planificador · planificador@acis.cl · Planif123!", color = MaterialTheme.colorScheme.onSecondaryContainer)
+                Text("Técnico · tecnico@acis.cl · Tecnico123!", color = MaterialTheme.colorScheme.onSecondaryContainer)
+                Text("Cliente · cliente@acis.cl · Cliente123!", color = MaterialTheme.colorScheme.onSecondaryContainer)
             }
         }
-        Text("Sin internet · Datos en este dispositivo\nEl acceso requiere una cuenta activa.",
+        Text("Se requiere conexión con los microservicios.\nEl acceso requiere una cuenta activa.",
             modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center)
     }

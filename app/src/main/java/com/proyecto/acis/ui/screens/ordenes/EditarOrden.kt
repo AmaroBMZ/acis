@@ -80,6 +80,7 @@ internal fun EditarOrden(
         ) {
             item { Text("Editar Orden de Trabajo (${orden.id})", style = MaterialTheme.typography.headlineSmall) }
             item { SelectorCliente(viewModel) }
+            item { SelectorTecnico(viewModel) }
             item { CampoFormulario(datos.local, viewModel::cambiarLocal, "Local", errores.local) }
             item { CampoFormulario(datos.equipo, viewModel::cambiarEquipo, "Equipo", errores.equipo) }
             item { CampoFormulario(datos.descripcion, viewModel::cambiarDescripcion,

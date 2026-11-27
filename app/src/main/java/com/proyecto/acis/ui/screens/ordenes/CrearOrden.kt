@@ -67,7 +67,8 @@ internal fun CrearOrden(
     ) {
         item { Text("Nueva orden de trabajo", style = MaterialTheme.typography.headlineSmall) }
         item { SelectorCliente(viewModel) }
-            item { CampoFormulario(datos.local, viewModel::cambiarLocal, "Local", errores.local) }
+        item { SelectorTecnico(viewModel) }
+        item { CampoFormulario(datos.local, viewModel::cambiarLocal, "Local", errores.local) }
         item { CampoFormulario(datos.equipo, viewModel::cambiarEquipo, "Equipo", errores.equipo) }
         item { CampoFormulario(datos.descripcion, viewModel::cambiarDescripcion,
             "Descripción del trabajo", errores.descripcion, minLines = 3) }

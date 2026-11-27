@@ -193,13 +193,13 @@ private fun AplicacionAutenticada(viewModel: OrdenesViewModel, onSalir: () -> Un
                             seccion == 2 -> emptyList()
                             perfil == Perfil.TECNICO && seccion == 1 -> ordenesVisibles.filter { it.estado == com.proyecto.acis.data.EstadoOt.CERRADA }
                             perfil == Perfil.TECNICO -> ordenesVisibles.filter { it.estado != com.proyecto.acis.data.EstadoOt.CERRADA }
-                            seccion == 0 -> ordenesVisibles.filter { it.estado != com.proyecto.acis.data.EstadoOt.CERRADA }
                             else -> ordenesVisibles
                         }
                         if (seccion == 2) PerfilLocal(viewModel.usuario?.nombre.orEmpty(), viewModel.usuario?.correo.orEmpty(), perfil)
                         else ListaOrdenesAdaptada(
                             todasOrdenes = ordenesSeccion,
                             perfil = perfil,
+                            etiquetaTecnico = viewModel::etiquetaTecnico,
                             onSeleccionar = { id -> navController.navigate(RutasAcis.detalle(id)) { launchSingleTop = true } },
                         )
                 }

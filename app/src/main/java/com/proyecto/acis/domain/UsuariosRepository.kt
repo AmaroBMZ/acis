@@ -12,6 +12,7 @@ interface UsuariosRepository {
     // La lista es de solo lectura y se observa para refrescar la administración tras una escritura.
     val usuarios: StateFlow<List<Usuario>>
     // Recibe al actor para que la capa de datos confirme autorización al guardar.
-    suspend fun registrar(actor: String, nombre: String, correo: String, perfil: Perfil, clave: String): ResultadoRegistro
-    suspend fun actualizarAcceso(actor: String, correo: String, perfil: Perfil, activo: Boolean): Boolean
+    suspend fun cargar(token: String): Boolean
+    suspend fun registrar(actor: String, token: String, rut: String, nombre: String, correo: String, perfil: Perfil, clave: String): ResultadoRegistro
+    suspend fun actualizarAcceso(actor: String, token: String, correo: String, perfil: Perfil, activo: Boolean): Boolean
 }

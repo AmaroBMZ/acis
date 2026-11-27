@@ -9,19 +9,24 @@ import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.runtime.Composable
-import com.proyecto.acis.data.CuentasPrueba
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
@@ -45,15 +50,62 @@ internal fun OrdenNoDisponible(onVolver: () -> Unit) {
 }
 
 @Composable
-// Usa las cuentas activas con rol cliente cargadas desde SQLite, incluidos los cambios del administrador.
+// Presenta un menú desplegable solo con clientes activos.
 internal fun SelectorCliente(viewModel: OrdenesViewModel) {
+    val usuarios by viewModel.usuarios.collectAsState()
+    val clientes = usuarios.filter { it.activo && it.perfil == Perfil.CLIENTE }
+    SelectorUsuario(
+        titulo = "Cliente de la orden",
+        seleccionado = clientes.firstOrNull { it.correo == viewModel.datosCrear.clienteCorreo }?.let { "${it.nombre} · ${it.correo}" },
+        opciones = clientes.map { it.correo to "${it.nombre} · ${it.correo}" },
+        error = viewModel.erroresCrear.clienteCorreo,
+        alSeleccionar = viewModel::cambiarCliente,
+    )
+}
+
+@Composable
+// Mantiene el menú de técnicos separado del selector de clientes en la creación de una OT.
+internal fun SelectorTecnico(viewModel: OrdenesViewModel) {
+    val usuarios by viewModel.usuarios.collectAsState()
+    val tecnicos = usuarios.filter { it.activo && it.perfil == Perfil.TECNICO }
+    SelectorUsuario(
+        titulo = "Técnico asignado",
+        seleccionado = tecnicos.firstOrNull { it.correo == viewModel.datosCrear.tecnicoCorreo }?.let { "${it.nombre} · ${it.correo}" },
+        opciones = tecnicos.map { it.correo to "${it.nombre} · ${it.correo}" },
+        error = viewModel.erroresCrear.tecnicoCorreo,
+        alSeleccionar = viewModel::cambiarTecnico,
+    )
+}
+
+@Composable
+private fun SelectorUsuario(
+    titulo: String,
+    seleccionado: String?,
+    opciones: List<Pair<String, String>>,
+    error: String?,
+    alSeleccionar: (String) -> Unit,
+) {
+    var expandido by remember { mutableStateOf(false) }
     Column {
-        Text("Cliente de la orden", style = MaterialTheme.typography.titleMedium)
-        viewModel.clientesActivos.forEach { cliente ->
-            FilterChip(selected = viewModel.datosCrear.clienteCorreo == cliente.correo,
-                onClick = { viewModel.cambiarCliente(cliente.correo) }, label = { Text(cliente.correo) })
+        Text(titulo, style = MaterialTheme.typography.titleMedium)
+        Box {
+            OutlinedButton(onClick = { expandido = true }, modifier = Modifier.fillMaxWidth()) {
+                Text(seleccionado ?: "Seleccionar ${titulo.lowercase()}")
+            }
+            DropdownMenu(expanded = expandido, onDismissRequest = { expandido = false }) {
+                opciones.forEach { (valor, etiqueta) ->
+                    DropdownMenuItem(
+                        text = { Text(etiqueta) },
+                        onClick = {
+                            alSeleccionar(valor)
+                            expandido = false
+                        },
+                    )
+                }
+            }
         }
-        viewModel.erroresCrear.clienteCorreo?.let { ErrorSeleccion(it) }
+        if (opciones.isEmpty()) Text("No hay usuarios activos disponibles.", color = MaterialTheme.colorScheme.error)
+        error?.let { ErrorSeleccion(it) }
     }
 }
 

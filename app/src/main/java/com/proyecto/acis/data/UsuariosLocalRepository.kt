@@ -7,8 +7,9 @@ class UsuariosLocalRepository(private val local: OrdenesRepository) : UsuariosRe
     // Comparte el flujo publicado por SQLite; no mantiene una segunda lista potencialmente desactualizada.
     override val usuarios = local.usuarios
     // Delega en la operación serializada y ejecutada en IO por el repositorio local.
-    override suspend fun registrar(actor: String, nombre: String, correo: String, perfil: Perfil, clave: String) =
+    override suspend fun cargar(token: String) = true
+    override suspend fun registrar(actor: String, token: String, rut: String, nombre: String, correo: String, perfil: Perfil, clave: String) =
         local.registrarUsuario(actor, nombre, correo, perfil, clave)
-    override suspend fun actualizarAcceso(actor: String, correo: String, perfil: Perfil, activo: Boolean) =
+    override suspend fun actualizarAcceso(actor: String, token: String, correo: String, perfil: Perfil, activo: Boolean) =
         local.actualizarAcceso(actor, correo, perfil, activo)
 }

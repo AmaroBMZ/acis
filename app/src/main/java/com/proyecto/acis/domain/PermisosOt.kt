@@ -4,12 +4,13 @@ import com.proyecto.acis.data.*
 
 /** La identidad autenticada determina el acceso, no un selector visual de perfiles. */
 object PermisosOt {
-    // El planificador ve todo; técnico por nombre asignado y cliente por correo propietario.
+    // Las OTs remotas guardan correo del técnico; acepta también el nombre usado por semillas locales.
     fun puedeVer(usuario: Usuario?, orden: OrdenTrabajo): Boolean {
         if (usuario == null || !usuario.activo) return false
         return when (usuario.perfil) {
         Perfil.PLANIFICADOR -> true
-        Perfil.TECNICO -> orden.tecnico == usuario.nombre
+        Perfil.TECNICO -> orden.tecnico.equals(usuario.correo, ignoreCase = true) ||
+            orden.tecnico.equals(usuario.nombre, ignoreCase = true)
         Perfil.CLIENTE -> orden.clienteCorreo == usuario.correo
         Perfil.ADMINISTRADOR -> false
         }
